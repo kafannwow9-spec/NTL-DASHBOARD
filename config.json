@@ -1,0 +1,21 @@
+{
+  "CLIENT_ID": "1405179057628254259",
+  "CLIENT_SECRET": "aje2bpXBO253BpkCkdoXV9MMMono0TkH",
+  "REDIRECT_URI": "https://hxufdckcamwizvibevry.supabase.co/auth/v1/callback",
+  "SUPABASE_URL": "https://hxufdckcamwizvibevry.supabase.co",
+  "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dWZkY2tjYW13aXp2aWJldnJ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzNTg3MDQsImV4cCI6MjA5NDkzNDcwNH0.qGDsPj5RZUB8iWeyw62ALyj1n5faD6LPHQl8DQt1ibA",
+  "BOT_TOKEN": "MTwNTE3OTA1NzYyODI1NDI1OQ.G-WZUA.PVAasjFhSOn_XZ-KqufODffuK6GJM247LI_dgs",
+  "BOT_IP_PORT": "de3.bot-hosting.net:20163",
+  "BOT_SECRET": "38dj38nr89oq",
+  "guilds": {
+    "1179136470750068766": {
+      "ticket": true,
+      "welcome": true,
+      "levels": true,
+      "music": true,
+      "moderation": false,
+      "economy": true,
+      "azkar": true
+    }
+  }
+}
