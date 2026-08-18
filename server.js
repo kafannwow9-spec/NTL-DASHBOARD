@@ -33,7 +33,7 @@ app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
   }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
-  res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With, content-type, Authorization, X-Bot-Secret');
+  res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type, Authorization, X-Bot-Secret, X-NTL-Secret, x-ntl-secret, x-bot-secret, authorization, content-type');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
@@ -303,6 +303,7 @@ function saveLocalDB(data) {
 function authenticate(req, res, next) {
   const authHeader = req.headers['authorization'];
   const botSecretHeader = req.headers['x-bot-secret'];
+  const ntlSecretHeader = req.headers['x-ntl-secret'];
   const cfg = getMergedConfig();
   const validSecret = cfg.BOT_SECRET || '38dj38nr89oq';
 
@@ -314,8 +315,9 @@ function authenticate(req, res, next) {
     }
   }
 
-  // 2. Check X-Bot-Secret header
-  if (botSecretHeader && (!validSecret || botSecretHeader === validSecret || botSecretHeader === '38dj38nr89oq' || (cfg.BOT_SECRET && botSecretHeader === cfg.BOT_SECRET))) {
+  // 2. Check X-Bot-Secret or X-NTL-Secret header
+  if ((botSecretHeader && (!validSecret || botSecretHeader === validSecret || botSecretHeader === '38dj38nr89oq' || (cfg.BOT_SECRET && botSecretHeader === cfg.BOT_SECRET))) ||
+      (ntlSecretHeader && (!validSecret || ntlSecretHeader === validSecret || ntlSecretHeader === '38dj38nr89oq' || (cfg.BOT_SECRET && ntlSecretHeader === cfg.BOT_SECRET)))) {
     return next();
   }
 

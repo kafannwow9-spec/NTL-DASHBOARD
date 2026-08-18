@@ -348,15 +348,6 @@
               </div>
             </button>
 
-            <button onclick="configureBotServerUrl()" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-white/5 text-slate-200 text-xs font-bold transition cursor-pointer">
-              <div class="flex items-center gap-2.5">
-                <div class="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
-                  <i data-lucide="server" class="w-4 h-4"></i>
-                </div>
-                <span>رابط خادم البوت</span>
-              </div>
-            </button>
-
             <button onclick="openModal('premium-modal')" class="flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-white/5 text-amber-300 text-xs font-bold transition cursor-pointer">
               <div class="flex items-center gap-2.5">
                 <div class="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center">
@@ -762,10 +753,6 @@
             <i data-lucide="plus" class="w-4 h-4 text-black"></i>
             <span>إضافة البوت لسيرفر</span>
           </a>
-          <button onclick="configureBotServerUrl()" class="px-3.5 py-2 rounded-xl bg-[#0B0E14] hover:bg-[#161B22] text-zinc-300 font-medium text-xs border border-[#27272A] transition cursor-pointer flex items-center gap-2">
-            <i data-lucide="server" class="w-4 h-4 text-zinc-400"></i>
-            <span>رابط الخادم</span>
-          </button>
           <button onclick="loadAllBotServersDirectly()" class="px-3 py-2 rounded-xl bg-[#0B0E14] hover:bg-[#161B22] text-zinc-300 font-medium text-xs border border-[#27272A] transition cursor-pointer" title="إعادة تحميل السيرفرات">
             <i data-lucide="refresh-cw" class="w-4 h-4"></i>
           </button>
@@ -1784,12 +1771,19 @@
     }
 
     function getApiUrl(path) {
-      const customHost = localStorage.getItem('ntl_api_base_url');
-      if (customHost && customHost.trim() !== '') {
-        const cleanHost = customHost.trim().replace(/\/+$/, '');
-        return `${cleanHost}${path.startsWith('/') ? path : '/' + path}`;
+      let customHost = localStorage.getItem('ntl_api_base_url');
+      if (window.location.hostname.includes('pages.dev')) {
+        customHost = window.location.origin; // Force origin on pages.dev to use _redirects
+      } else if (!customHost || customHost.trim() === '') {
+        if (window.location.hostname.includes('github.io')) {
+          customHost = 'http://de3.bot-hosting.net:20163';
+        } else {
+          customHost = window.location.origin;
+        }
       }
-      return path;
+      let cleanHost = customHost.trim().replace(/\/+$/, '');
+      const formattedPath = path.startsWith('/') ? path : '/' + path;
+      return `${cleanHost}${formattedPath}`;
     }
 
     function getApiSecret() {
@@ -1807,46 +1801,26 @@
       };
     }
 
-    function configureBotServerUrl() {
-      const currentUrl = localStorage.getItem('ntl_api_base_url') || 'http://de3.bot-hosting.net:20163';
-      const currentSecret = localStorage.getItem('ntl_api_secret') || '38dj38nr89oq';
+    async function apiFetch(path, options = {}) {
+      const url = (path.startsWith('http://') || path.startsWith('https://')) ? path : getApiUrl(path);
+      const extraHeaders = options.headers || {};
+      const headers = getApiHeaders(extraHeaders);
 
-      const urlInput = prompt('أدخل رابط خادم البوت (Backend URL):\n(مثال: http://de3.bot-hosting.net:20163)', currentUrl);
-      if (urlInput !== null) {
-        let cleanUrl = urlInput.trim();
-        if (cleanUrl && !cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
-          cleanUrl = 'http://' + cleanUrl;
-        }
-        if (cleanUrl) {
-          localStorage.setItem('ntl_api_base_url', cleanUrl);
-        } else {
-          localStorage.removeItem('ntl_api_base_url');
-        }
-
-        const secretInput = prompt('أدخل الكود السري الخارجي لربط البوت مع الداشبورد (API Secret):', currentSecret);
-        if (secretInput !== null) {
-          let cleanSecret = secretInput.trim();
-          if (cleanSecret) {
-            localStorage.setItem('ntl_api_secret', cleanSecret);
-            showToast('تم حفظ رابط خادم البوت والكود السري بنجاح!', 'success');
-          } else {
-            localStorage.removeItem('ntl_api_secret');
-            showToast('تم إعادة ضبط الكود السري', 'info');
-          }
-        }
-        fetchDiscordGuilds();
+      if (options.body instanceof FormData) {
+        delete headers['Content-Type'];
+        delete headers['content-type'];
       }
+
+      const fetchOpts = { ...options, headers };
+
+      return await fetch(url, fetchOpts);
     }
 
     // دالة إرسال التعديلات من الداشبورد إلى البوت
     async function saveSettings(guildId, newSettings) {
-      const apiUrl = getApiUrl('');
-      const secret = getApiSecret();
-
       try {
-        const response = await fetch(getApiUrl('/api/settings/update'), {
+        const response = await apiFetch('/api/settings/update', {
           method: 'POST',
-          headers: getApiHeaders(),
           body: JSON.stringify({
             guildId: guildId,
             prefix: newSettings?.prefix || '!',
@@ -2156,9 +2130,7 @@
       if (serverTitleEl) serverTitleEl.innerText = name;
 
       try {
-        const res = await fetch(getApiUrl(`/api/guild-settings/${guildId}`), {
-          headers: getApiHeaders()
-        });
+        const res = await apiFetch(`/api/guild-settings/${guildId}`);
         if (res.ok) {
           const data = await res.json();
           
@@ -2192,6 +2164,11 @@
           const roleOptionsHtml = `<option value="">-- بدون تحديد (الجميع) --</option>` + roles.map(r => `<option value="${r.id}">${escapeHtml(r.name)}</option>`).join('');
           const roleEl = document.getElementById('ticket-supportRole');
           if (roleEl) roleEl.innerHTML = roleOptionsHtml;
+
+          // Render Server Emojis
+          if (data.emojis && Array.isArray(data.emojis)) {
+            renderServerEmojis(data.emojis);
+          }
 
           // Populate Settings
           if (data.settings) {
@@ -2376,7 +2353,7 @@
 
     async function logout() {
       try {
-        await fetch(getApiUrl('/api/auth/logout'), { method: 'POST' });
+        await apiFetch('/api/auth/logout', { method: 'POST' });
       } catch (e) {}
       currentUser = null;
       localStorage.removeItem('ntl_user_logged_in');
@@ -2425,9 +2402,8 @@
       let checkSuccess = false;
       if (userAdminGuilds.length > 0) {
         try {
-          const checkRes = await fetch(getApiUrl('/api/guilds/check'), {
+          const checkRes = await apiFetch('/api/guilds/check', {
             method: 'POST',
-            headers: getApiHeaders(),
             body: JSON.stringify({ userGuilds: userAdminGuilds })
           });
           if (checkRes.ok && (checkRes.headers.get('content-type') || '').includes('application/json')) {
@@ -2447,9 +2423,7 @@
       if (!checkSuccess) {
         let botGuildSet = new Set();
         try {
-          const bRes = await fetch(getApiUrl('/api/bot-guilds'), {
-            headers: getApiHeaders()
-          });
+          const bRes = await apiFetch('/api/bot-guilds');
           if (bRes.ok && (bRes.headers.get('content-type') || '').includes('application/json')) {
             const bData = await bRes.json();
             const bList = Array.isArray(bData) ? bData : (bData.guilds || []);
@@ -2477,9 +2451,7 @@
         } else {
           // Express Session Fallback
           try {
-            const res = await fetch(getApiUrl('/api/guilds'), {
-              headers: getApiHeaders()
-            });
+            const res = await apiFetch('/api/guilds');
             if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
               const data = await res.json();
               activeGuilds = data.activeGuilds || [];
@@ -2626,7 +2598,7 @@
 
       let activeGuilds = [];
       try {
-        const res = await fetch(getApiUrl('/api/bot-guilds'), { headers: getApiHeaders() });
+        const res = await apiFetch('/api/bot-guilds');
         if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
           const data = await res.json();
           activeGuilds = data.guilds || data.activeGuilds || (Array.isArray(data) ? data : []);
@@ -2637,7 +2609,7 @@
 
       if (activeGuilds.length === 0) {
         try {
-          const res = await fetch(getApiUrl('/api/guilds'), { headers: getApiHeaders() });
+          const res = await apiFetch('/api/guilds');
           if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
             const data = await res.json();
             activeGuilds = data.activeGuilds || data.guilds || (Array.isArray(data) ? data : []);
@@ -2939,13 +2911,12 @@
       const reader = new FileReader();
       reader.onload = async function(e) {
         const dataUrl = e.target.result;
-        try {
-          const res = await fetch(getApiUrl('/api/upload-image'), {
-            method: 'POST',
-            headers: getApiHeaders(),
-            body: JSON.stringify({ image: dataUrl })
-          });
-          const data = await res.json();
+      try {
+        const res = await apiFetch('/api/upload-image', {
+          method: 'POST',
+          body: JSON.stringify({ image: dataUrl })
+        });
+        const data = await res.json();
           if (data && data.success && data.url) {
             const inputEl = document.getElementById(targetInputId);
             if (inputEl) {
@@ -3036,9 +3007,8 @@
       showToast('جاري حفظ وتطبيق الإعدادات بالسيرفر...', 'info');
 
       try {
-        const res = await fetch(getApiUrl(`/api/save-guild-settings/${selectedGuild.id}`), {
+        const res = await apiFetch(`/api/save-guild-settings/${selectedGuild.id}`, {
           method: 'POST',
-          headers: getApiHeaders(),
           body: JSON.stringify(payload)
         });
 
@@ -3068,7 +3038,7 @@
       if (!selectedGuild || !selectedGuild.id) return;
       if (!guildChannelsCache || guildChannelsCache.length === 0) {
         try {
-          const res = await fetch(getApiUrl(`/api/guild-settings/${selectedGuild.id}`), { headers: getApiHeaders() });
+          const res = await apiFetch(`/api/guild-settings/${selectedGuild.id}`);
           if (res.ok) {
             const data = await res.json();
             guildChannelsCache = data.channels || [];
@@ -3113,9 +3083,8 @@
       showToast('جاري إرسال ونشر لوحة التذاكر التفاعلية بالسيرفر...', 'info');
 
       try {
-        const res = await fetch(getApiUrl(`/api/save-guild-settings/${selectedGuild.id}`), {
+        const res = await apiFetch(`/api/save-guild-settings/${selectedGuild.id}`, {
           method: 'POST',
-          headers: getApiHeaders(),
           body: JSON.stringify({
             guildId: selectedGuild.id,
             panels: currentPanels,
@@ -3159,9 +3128,8 @@
       showToast('جاري إرسال الذكر الفوري إلى الروم...', 'info');
 
       try {
-        const res = await fetch(getApiUrl(`/api/azkar/trigger/${selectedGuild.id}`), {
+        const res = await apiFetch(`/api/azkar/trigger/${selectedGuild.id}`, {
           method: 'POST',
-          headers: getApiHeaders(),
           body: JSON.stringify({ channelId })
         });
         const data = await res.json();
@@ -3193,9 +3161,8 @@
       showToast('جاري إرسال ونشر إيمبد الاقتراحات بالسيرفر...', 'info');
 
       try {
-        const res = await fetch(getApiUrl(`/api/save-guild-settings/${selectedGuild.id}`), {
+        const res = await apiFetch(`/api/save-guild-settings/${selectedGuild.id}`, {
           method: 'POST',
-          headers: getApiHeaders(),
           body: JSON.stringify({
             guildId: selectedGuild.id,
             suggestions: {
@@ -3242,9 +3209,8 @@
       showToast('جاري إرسال الرسالة عبر البوت...', 'info');
 
       try {
-        const res = await fetch(getApiUrl(`/api/broadcast/${selectedGuild.id}`), {
+        const res = await apiFetch(`/api/broadcast/${selectedGuild.id}`, {
           method: 'POST',
-          headers: getApiHeaders(),
           body: JSON.stringify({
             channelId,
             title: title || undefined,
@@ -3435,18 +3401,43 @@
       populateGuildRolesDropdowns();
     }
 
-    function toggleBtnActionFields(selectEl) {
-      const parent = selectEl.closest('.embed-btn-row');
-      if (!parent) return;
-      const val = selectEl.value;
-      const roleWrapper = parent.querySelector('.btn-role-wrapper');
-      const msgWrapper = parent.querySelector('.btn-msg-wrapper');
-      if (val === 'give_role') {
-        roleWrapper?.classList.remove('hidden');
-        msgWrapper?.classList.add('hidden');
+    function renderServerEmojis(emojis) {
+      const container = document.getElementById('server-emojis-container');
+      if (!container) return;
+      if (!emojis || emojis.length === 0) {
+        container.innerHTML = '<span class="text-xs text-slate-500">لا توجد إيموجيات مخصصة في هذا السيرفر</span>';
+        return;
+      }
+      container.innerHTML = '';
+      emojis.forEach(e => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'flex items-center gap-1 bg-[#151928] hover:bg-pink-600/30 border border-white/10 hover:border-pink-500/50 rounded-lg px-2 py-1 text-xs text-slate-200 transition cursor-pointer';
+        const emojiStr = e.animated ? `<a:${e.name}:${e.id}>` : (e.id ? `<:${e.name}:${e.id}>` : e.name);
+        const imgTag = e.id ? `<img src="https://cdn.discordapp.com/emojis/${e.id}.${e.animated ? 'gif' : 'png'}" class="w-4 h-4 inline-block object-contain" alt="${e.name}">` : '';
+        btn.innerHTML = `${imgTag} <span>:${e.name}:</span>`;
+        btn.onclick = () => insertEmojiToActiveField(emojiStr);
+        container.appendChild(btn);
+      });
+    }
+
+    function insertEmojiToActiveField(emojiStr) {
+      // Find active emoji input or first emoji input in embed buttons
+      const emojiInputs = document.querySelectorAll('.btn-emoji');
+      let targetInput = null;
+      emojiInputs.forEach(input => {
+        if (document.activeElement === input) targetInput = input;
+      });
+      if (!targetInput && emojiInputs.length > 0) {
+        targetInput = emojiInputs[emojiInputs.length - 1]; // pick last button's emoji field
+      }
+      if (targetInput) {
+        targetInput.value = emojiStr;
+        targetInput.focus();
+        showToast(`تم إضافة الإيموجي ${emojiStr} للزر!`, 'success');
+        updateEmbedPreview();
       } else {
-        roleWrapper?.classList.add('hidden');
-        msgWrapper?.classList.remove('hidden');
+        showToast(`انقر على حقل الإيموجي بأحد الأزرار أولاً لنسخ ${emojiStr}`, 'info');
       }
     }
 
@@ -3500,9 +3491,8 @@
         const dataUrl = e.target.result;
         showToast('جاري رفع الصورة...', 'info');
         try {
-          const res = await fetch(getApiUrl('/api/upload-image'), {
+          const res = await apiFetch('/api/upload-image', {
             method: 'POST',
-            headers: getApiHeaders(),
             body: JSON.stringify({ image: dataUrl })
           });
           if (res.ok) {
@@ -3595,9 +3585,8 @@
       updateEmbedFromUI();
       showToast('جاري حفظ وتخزين بيانات الإيمبد بالسيرفر...', 'info');
       try {
-        const res = await fetch(getApiUrl(`/api/save-guild-settings/${selectedGuild.id}`), {
+        const res = await apiFetch(`/api/save-guild-settings/${selectedGuild.id}`, {
           method: 'POST',
-          headers: getApiHeaders(),
           body: JSON.stringify({
             guildId: selectedGuild.id,
             customEmbeds: currentCustomEmbeds
@@ -3628,9 +3617,8 @@
       showToast('جاري نشر وإرسال الإيمبد إلى القناة المحددة...', 'info');
       try {
         const currentEmb = currentCustomEmbeds[selectedCustomEmbedId];
-        const res = await fetch(getApiUrl(`/api/save-guild-settings/${selectedGuild.id}`), {
+        const res = await apiFetch(`/api/save-guild-settings/${selectedGuild.id}`, {
           method: 'POST',
-          headers: getApiHeaders(),
           body: JSON.stringify({
             guildId: selectedGuild.id,
             customEmbeds: currentCustomEmbeds,
@@ -3792,9 +3780,8 @@
       syncAutoResponsesFromUI();
       showToast('جاري حفظ وتفعيل الردود التلقائية بالسيرفر...', 'info');
       try {
-        const res = await fetch(getApiUrl(`/api/save-guild-settings/${selectedGuild.id}`), {
+        const res = await apiFetch(`/api/save-guild-settings/${selectedGuild.id}`, {
           method: 'POST',
-          headers: getApiHeaders(),
           body: JSON.stringify({
             guildId: selectedGuild.id,
             autoResponses: currentAutoResponses
