@@ -9,7 +9,7 @@ const FormData = require('form-data');
 // ==========================================
 //    CONFIGURATION & API KEYS (EDIT HERE)
 // ==========================================
-let BACON_API_KEY = 'Bacon-eadeb66a71d884db04fe-047dcdebc528ba8fedf2'; // مفتاح تجاوز باكون المحدث
+let BACON_API_KEY = 'Bacon-0b8eedf8472d486a9684-2ab52bc8d5ec946e4d30'; // مفتاح تجاوز باكون
 let GEMINI_API_KEY = "AQ.Ab8RN6KHehX24Xvasqkm4Cb4DzH1P4aqELCn7D-_92lqclOpCA"; // مفتاح الذكاء الاصطناعي
 // ==========================================
 
@@ -1474,7 +1474,7 @@ const shortDhikrs = [
     "يا حي يا قيوم برحمتك أستغيث أصلح لي شأني كله ولا تكلني إلى نفسي طرفة عين"
 ];
 
-async function getAbsoluteUrl(pathOrUrl) {
+function getAbsoluteUrl(pathOrUrl) {
     if (!pathOrUrl || pathOrUrl === 'لايوجد' || pathOrUrl === 'none') return 'لايوجد';
     pathOrUrl = pathOrUrl.trim().replace(/[?&>\s\]\)*_~`'"]+$/, '');
     if (!pathOrUrl) return 'لايوجد';
@@ -1484,27 +1484,8 @@ async function getAbsoluteUrl(pathOrUrl) {
         try {
             const matches = pathOrUrl.match(/^data:image\/([a-zA-Z0-9-+.]+);base64,(.+)$/);
             if (matches && matches[2]) {
-                const base64Str = matches[2];
-                const imgbbKey = 'e664c19272197ad9ccedf89cb063a601';
-                
-                const axios = require('axios');
-                const bodyParams = new URLSearchParams();
-                bodyParams.append('image', base64Str);
-                
-                try {
-                    const res = await axios.post(`https://api.imgbb.com/1/upload?key=${imgbbKey}`, bodyParams.toString(), {
-                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                        timeout: 10000
-                    });
-                    if (res.data?.data?.url) {
-                        return res.data.data.url;
-                    }
-                } catch (err) {
-                    console.warn('[getAbsoluteUrl ImgBB Bot Error]:', err.message);
-                }
-
                 const ext = matches[1] === 'jpeg' ? 'jpg' : matches[1];
-                const buffer = Buffer.from(base64Str, 'base64');
+                const buffer = Buffer.from(matches[2], 'base64');
                 const fileName = `img_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${ext}`;
                 const uploadsDir = path.join(process.cwd(), 'uploads');
                 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
@@ -1514,7 +1495,7 @@ async function getAbsoluteUrl(pathOrUrl) {
                 return 'لايوجد';
             }
         } catch (e) {
-            console.error('Error in getAbsoluteUrl base64 handling (Bot):', e);
+            console.error('Error saving base64 image in getAbsoluteUrl:', e);
             return 'لايوجد';
         }
     }
@@ -2042,7 +2023,6 @@ async function bypassDeltaLink(deltaLink) {
             try {
                 const baconKey = getBaconApiKey();
                 if (!baconKey) throw new Error('No bacon key');
-                console.log(`[Delta Bypass] Starting Bacon Bypass request with key: ${baconKey.substring(0, 10)}...`);
                 const res = await fetch('https://baconbypass.online/bypass', {
                     method: 'POST',
                     headers: {
@@ -2053,21 +2033,16 @@ async function bypassDeltaLink(deltaLink) {
                         url: cleanLink,
                         apikey: baconKey
                     }),
-                    signal: AbortSignal.timeout(10000)
+                    signal: AbortSignal.timeout(7500)
                 });
                 const data = await res.json().catch(() => null);
-                console.log(`[Delta Bypass] Bacon Response Status: ${res.status}`);
                 const rawKey = data?.result || data?.bypassed || data?.key || data?.url || data?.link || data?.destination;
                 const valid = validateKey(rawKey);
                 if (valid) {
                     console.log(`[Delta Bypass] Bacon Bypass API won the race!`);
                     return valid;
-                } else {
-                    console.warn(`[Delta Bypass] Bacon returned invalid result: ${JSON.stringify(data)}`);
                 }
-            } catch (e) {
-                console.error(`[Delta Bypass] Bacon worker error: ${e.message}`);
-            }
+            } catch (e) {}
             throw new Error('Bacon Bypass API failed');
         })()
     );
@@ -4088,8 +4063,8 @@ async function updatePanelEmbed(interaction, panelId) {
         const displayTypeText = panel.displayType === 'select' ? 'قائمة منسدلة (Select Menu)' : 'أزرار عادية (Buttons)';
         
         // Resolve relative URLs for panel image and welcome image
-        const displayImgUrl = await getAbsoluteUrl(panel.img || 'لايوجد');
-        const displayWelcomeImgUrl = await getAbsoluteUrl(panel.welcome_img || 'لايوجد');
+        const displayImgUrl = getAbsoluteUrl(panel.img || 'لايوجد');
+        const displayWelcomeImgUrl = getAbsoluteUrl(panel.welcome_img || 'لايوجد');
 
         const imgDisplayStr = (displayImgUrl && displayImgUrl !== 'لايوجد') ? (displayImgUrl.startsWith('data:') ? '[صورة مرفوعة (Base64)]' : (displayImgUrl.length > 80 ? displayImgUrl.substring(0, 77) + '...' : displayImgUrl)) : 'لايوجد';
         const welcomeImgDisplayStr = (displayWelcomeImgUrl && displayWelcomeImgUrl !== 'لايوجد') ? (displayWelcomeImgUrl.startsWith('data:') ? '[صورة مرفوعة (Base64)]' : (displayWelcomeImgUrl.length > 80 ? displayWelcomeImgUrl.substring(0, 77) + '...' : displayWelcomeImgUrl)) : 'لايوجد';
@@ -10832,7 +10807,7 @@ async function callGeminiAPI(systemPrompt, userPrompt, imageParts = [], guildId 
         API_KEY = process.env.GEMINI_API_KEY;
     }
 
-    const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`;
+    const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${API_KEY}`;
 
     try {
         const response = await axios.post(

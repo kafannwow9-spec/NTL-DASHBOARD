@@ -224,45 +224,35 @@ app.post('/api/upload-image', async (req, res) => {
     let finalUrl = localUrl;
     let uploadSuccess = false;
 
-    // 1. Try ImgBB (Primary)
+    // 1. Try ImgBB
     try {
       const axios = require('axios');
-      const imgbbKey = 'e664c19272197ad9ccedf89cb063a601'; // المفتاح المقدم من العميل
-      
-      const bodyParams = new URLSearchParams();
-      bodyParams.append('image', base64Str);
-      
-      console.log(`[Upload]: Attempting ImgBB upload...`);
-      const imgbbRes = await axios.post(`https://api.imgbb.com/1/upload?key=${imgbbKey}`, bodyParams.toString(), {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        timeout: 15000
-      });
+      const imgbbKeys = [
+        process.env.IMGBB_API_KEY,
+        '2d8bbf7cf499f57912d0938fc9d01242',
+        'd20cfbe5ca2501a350ebfb9fa9d1d575',
+        '6d207e02198a847aa5ad3ac50ed46520'
+      ].filter(Boolean);
 
-      if (imgbbRes.data && imgbbRes.data.data && imgbbRes.data.data.url) {
-        finalUrl = imgbbRes.data.data.url;
-        uploadSuccess = true;
-        console.log(`[Upload]: ImgBB Success -> ${finalUrl}`);
-      }
-    } catch (uploadErr) {
-      console.error(`[ImgBB Error]: ${uploadErr.message}`);
-      // Fallback to secondary keys if primary fails
-      const backupKeys = ['2d8bbf7cf499f57912d0938fc9d01242', 'd20cfbe5ca2501a350ebfb9fa9d1d575'].filter(k => k !== 'e664c19272197ad9ccedf89cb063a601');
-      for (const bKey of backupKeys) {
+      for (const key of imgbbKeys) {
         try {
           const bodyParams = new URLSearchParams();
           bodyParams.append('image', base64Str);
-          const bRes = await axios.post(`https://api.imgbb.com/1/upload?key=${bKey}`, bodyParams.toString(), {
+          const imgbbRes = await axios.post(`https://api.imgbb.com/1/upload?key=${key}`, bodyParams.toString(), {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            timeout: 10000
+            timeout: 5000
           });
-          if (bRes.data?.data?.url) {
-            finalUrl = bRes.data.data.url;
+
+          if (imgbbRes.data && imgbbRes.data.data && imgbbRes.data.data.url) {
+            finalUrl = imgbbRes.data.data.url;
             uploadSuccess = true;
-            console.log(`[Upload]: Backup ImgBB Success -> ${finalUrl}`);
+            console.log(`[Upload]: ImgBB Success -> ${finalUrl}`);
             break;
           }
-        } catch (e) {}
+        } catch (kErr) {}
       }
+    } catch (uploadErr) {
+      console.warn(`[ImgBB Error]: ${uploadErr.message || uploadErr}`);
     }
 
     // 2. Try Catbox if ImgBB failed
@@ -296,7 +286,7 @@ app.post('/api/upload-image', async (req, res) => {
   }
 });
 
-async function getAbsoluteUrl(pathOrUrl) {
+function getAbsoluteUrl(pathOrUrl) {
   if (!pathOrUrl || pathOrUrl === 'لايوجد' || pathOrUrl === 'none') return 'لايوجد';
   pathOrUrl = pathOrUrl.trim().replace(/[?&>\s\]\)*_~`'"]+$/, '');
   if (!pathOrUrl) return 'لايوجد';
@@ -305,29 +295,8 @@ async function getAbsoluteUrl(pathOrUrl) {
     try {
       const matches = pathOrUrl.match(/^data:image\/([a-zA-Z0-9-+.]+);base64,(.+)$/);
       if (matches && matches[2]) {
-        const base64Str = matches[2];
-        const imgbbKey = 'e664c19272197ad9ccedf89cb063a601';
-        
-        // Try ImgBB upload synchronously-ish (await)
-        const axios = require('axios');
-        const bodyParams = new URLSearchParams();
-        bodyParams.append('image', base64Str);
-        
-        try {
-          const res = await axios.post(`https://api.imgbb.com/1/upload?key=${imgbbKey}`, bodyParams.toString(), {
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            timeout: 10000
-          });
-          if (res.data?.data?.url) {
-            return res.data.data.url;
-          }
-        } catch (err) {
-          console.warn('[getAbsoluteUrl ImgBB Error]:', err.message);
-        }
-
-        // Fallback to local save if ImgBB fails
         const ext = matches[1] === 'jpeg' ? 'jpg' : matches[1];
-        const buffer = Buffer.from(base64Str, 'base64');
+        const buffer = Buffer.from(matches[2], 'base64');
         const fileName = `img_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${ext}`;
         const uploadsDir = path.join(process.cwd(), 'uploads');
         if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
@@ -337,7 +306,7 @@ async function getAbsoluteUrl(pathOrUrl) {
         return 'لايوجد';
       }
     } catch (e) {
-      console.error('Error in getAbsoluteUrl base64 handling:', e);
+      console.error('Error saving base64 image in getAbsoluteUrl:', e);
       return 'لايوجد';
     }
   }
@@ -1052,7 +1021,7 @@ app.post('/api/save-guild-settings/:guildId', verifyGuildAdmin, async (req, res)
             const embedColor = panelObj.color || color || tickets?.color || '#5865f2';
             const embedTitle = panelObj.title || title || tickets?.title || "🎫 قسم الدعم الفني والتذاكر";
             const embedDesc = panelObj.description || panelObj.desc || description || tickets?.description || "اضغط على الزر بالأسفل لفتح تذكرة تواصل مع فريق الدعم.";
-            const displayImgUrl = await getAbsoluteUrl(panelObj.img || 'لايوجد');
+            const displayImgUrl = getAbsoluteUrl(panelObj.img || 'لايوجد');
 
             const displayType = panelObj.displayType || 'buttons';
             const components = [];
@@ -1188,7 +1157,7 @@ app.post('/api/save-guild-settings/:guildId', verifyGuildAdmin, async (req, res)
                     container.addTextDisplayComponents(td => td.setContent(descText));
                   }
                 }
-                const imgUrl = await getAbsoluteUrl(embData.img || embData.imageUrl);
+                const imgUrl = getAbsoluteUrl(embData.img || embData.imageUrl);
                 if (imgUrl && imgUrl !== 'لايوجد' && imgUrl.startsWith('http')) {
                   container.addMediaGalleryComponents(mg => mg.addItems(item => item.setURL(imgUrl)));
                 }
@@ -1247,7 +1216,7 @@ app.post('/api/save-guild-settings/:guildId', verifyGuildAdmin, async (req, res)
                   .setDescription(cleanDesc || null)
                   .setColor(embData.color || '#5865F2');
 
-                const imgUrl = await getAbsoluteUrl(embData.img || embData.imageUrl);
+                const imgUrl = getAbsoluteUrl(embData.img || embData.imageUrl);
                 if (imgUrl && imgUrl !== 'لايوجد' && imgUrl.startsWith('http')) {
                   embed.setImage(imgUrl);
                 }
@@ -1303,7 +1272,7 @@ app.post('/api/save-guild-settings/:guildId', verifyGuildAdmin, async (req, res)
                 .setDescription(cleanDesc || null)
                 .setColor(embData.color || '#5865F2');
 
-              const imgUrl = await getAbsoluteUrl(embData.img || embData.imageUrl);
+              const imgUrl = getAbsoluteUrl(embData.img || embData.imageUrl);
               if (imgUrl && imgUrl !== 'لايوجد' && imgUrl.startsWith('http')) {
                 embed.setImage(imgUrl);
               }
