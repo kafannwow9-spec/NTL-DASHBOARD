@@ -10,7 +10,7 @@ const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelect
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ limit: '25mb', extended: true }));
@@ -329,11 +329,11 @@ function getMergedConfig() {
   const CLIENT_SECRET = fileConfig.CLIENT_SECRET || process.env.CLIENT_SECRET || "";
   const BOT_TOKEN = fileConfig.BOT_TOKEN || process.env.BOT_TOKEN || "";
   const BOT_SECRET = fileConfig.BOT_SECRET || process.env.BOT_SECRET || "38dj38nr89oq";
-  const BOT_SERVER_URL = fileConfig.BOT_SERVER_URL || process.env.BOT_SERVER_URL || "http://de3.bot-hosting.net:20163";
+  const BOT_SERVER_URL = fileConfig.BOT_SERVER_URL || process.env.BOT_SERVER_URL || "";
 
   const rawAppUrl = process.env.APP_URL || "";
   const cleanAppUrl = rawAppUrl.endsWith('/') ? rawAppUrl.slice(0, -1) : rawAppUrl;
-  const REDIRECT_URI = fileConfig.REDIRECT_URI || process.env.REDIRECT_URI || (cleanAppUrl ? `${cleanAppUrl}/auth/callback` : "http://localhost:20163/auth/callback");
+  const REDIRECT_URI = fileConfig.REDIRECT_URI || process.env.REDIRECT_URI || (cleanAppUrl ? `${cleanAppUrl}/auth/callback` : "");
 
   return {
     CLIENT_ID,
