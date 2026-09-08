@@ -3,14 +3,14 @@ const session = require('express-session');
 const path = require('path');
 const fs = require('fs');
 const dotenv = require('dotenv');
+const axios = require('axios');
+const FormData = require('form-data');
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, ContainerBuilder, MessageFlags } = require('discord.js');
 
 dotenv.config();
 
 const app = express();
 const PORT = 3000;
-// ملاحظة: في بيئة AI Studio يجب استخدام البورت 3000 لكي يعمل العرض المباشر.
-// إذا كنت ستنقل البوت لاستضافة خارجية، يمكنك تغييره إلى 20163 هناك.
 
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ limit: '25mb', extended: true }));
@@ -87,55 +87,32 @@ app.get('/image-:id', (req, res) => {
 
 // API to list templates
 app.get('/api/templates', (req, res) => {
-  const templatesPath = path.join(__dirname, 'assets', 'templates');
-  if (!fs.existsSync(templatesPath)) {
-    return res.json({ success: true, templates: [] });
-  }
-  
-  try {
-    const files = fs.readdirSync(templatesPath);
-    const templates = files
-      .filter(file => file.match(/\.(jpg|jpeg|png|gif|webp)$/i))
-      .map(file => {
-        let host = req.headers['x-forwarded-host'] || req.get('host');
-        let protocol = req.headers['x-forwarded-proto'] || req.protocol;
-        
-        if (req.headers.referer) {
-          try {
-            const refUrl = new URL(req.headers.referer);
-            const refHost = refUrl.host;
-            if (!refHost.includes('localhost') && !refHost.includes('127.0.0.1')) {
-              host = refHost;
-              protocol = refUrl.protocol.replace(':', '');
-            }
-          } catch (e) {}
-        }
+  // Hardcoded direct links provided by the user
+  const userTemplateUrls = [
+    "https://i.ibb.co/nqjs9YpQ/upload.png",
+    "https://i.ibb.co/DDVpnzLm/upload.png",
+    "https://i.ibb.co/GfKMtvkT/upload.png",
+    "https://i.ibb.co/QvfDSTdS/upload.png",
+    "https://i.ibb.co/zVLmHTXQ/upload.png",
+    "https://i.ibb.co/k2R2R3H0/upload.png",
+    "https://i.ibb.co/5Wp0Xdgh/upload.png",
+    "https://i.ibb.co/B2HSX28y/upload.png",
+    "https://i.ibb.co/JWGqdq7m/upload.png",
+    "https://i.ibb.co/Q70yTWsg/upload.png",
+    "https://i.ibb.co/DDRVbq6G/upload.png",
+    "https://i.ibb.co/tpq6LGcj/upload.png",
+    "https://i.ibb.co/BDWXhBx/upload.png",
+    "https://i.ibb.co/x8JdKKLF/upload.png",
+    "https://i.ibb.co/QvGpKBgb/upload.png"
+  ];
 
-        // Fix for Cloudflare Pages
-        if (host.includes('bot-hosting.net') && req.headers.referer && req.headers.referer.includes('pages.dev')) {
-          try {
-            const refUrl = new URL(req.headers.referer);
-            host = refUrl.host;
-            protocol = refUrl.protocol.replace(':', '');
-          } catch (e) {}
-        }
+  const templates = userTemplateUrls.map((url, index) => ({
+    id: `tpl-${index + 1}`,
+    name: `قالب ترحيب ${index + 1}`,
+    url: url
+  }));
 
-        const fullHost = `${protocol}://${host}`;
-        const bareName = file.split('.')[0];
-        const templateId = bareName.startsWith('template-') ? bareName.replace('template-', '') : bareName;
-
-        return {
-          id: templateId,
-          fileName: file,
-          name: templateId.length > 15 ? 'قالب جديد' : `القالب ${templateId}`,
-          url: `${fullHost}/image-template-${templateId}`
-        };
-      });
-    res.json({ success: true, templates });
-  } catch (err) {
-    console.error('Error listing templates:', err);
-    res.status(500).json({ success: false, error: 'Failed to list templates' });
-  }
+  res.json({ success: true, templates });
 });
 
 // Serve template images
@@ -226,40 +203,30 @@ app.post('/api/upload-image', async (req, res) => {
 
     // 1. Try ImgBB
     try {
-      const axios = require('axios');
-      const imgbbKeys = [
-        process.env.IMGBB_API_KEY,
-        '2d8bbf7cf499f57912d0938fc9d01242',
-        'd20cfbe5ca2501a350ebfb9fa9d1d575',
-        '6d207e02198a847aa5ad3ac50ed46520'
-      ].filter(Boolean);
+      const apiKey = process.env.IMGBB_KEY || 'E664c19272197ad9ccedf89cb063a601';
+      
+      const form = new FormData();
+      form.append('image', fs.createReadStream(filePath));
 
-      for (const key of imgbbKeys) {
-        try {
-          const bodyParams = new URLSearchParams();
-          bodyParams.append('image', base64Str);
-          const imgbbRes = await axios.post(`https://api.imgbb.com/1/upload?key=${key}`, bodyParams.toString(), {
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            timeout: 5000
-          });
+      const imgbbRes = await axios.post(`https://api.imgbb.com/1/upload?key=${apiKey}`, form, {
+        headers: {
+          ...form.getHeaders()
+        },
+        timeout: 15000
+      });
 
-          if (imgbbRes.data && imgbbRes.data.data && imgbbRes.data.data.url) {
-            finalUrl = imgbbRes.data.data.url;
-            uploadSuccess = true;
-            console.log(`[Upload]: ImgBB Success -> ${finalUrl}`);
-            break;
-          }
-        } catch (kErr) {}
+      if (imgbbRes.data && imgbbRes.data.data && imgbbRes.data.data.url) {
+        finalUrl = imgbbRes.data.data.url;
+        uploadSuccess = true;
+        console.log(`[Upload]: ImgBB Success -> ${finalUrl}`);
       }
     } catch (uploadErr) {
-      console.warn(`[ImgBB Error]: ${uploadErr.message || uploadErr}`);
+      console.error('❌ خطأ في رفع الصورة إلى ImgBB:', uploadErr.response ? uploadErr.response.data : uploadErr.message);
     }
 
     // 2. Try Catbox if ImgBB failed
     if (!uploadSuccess) {
       try {
-        const axios = require('axios');
-        const FormData = require('form-data');
         const catboxData = new FormData();
         catboxData.append('reqtype', 'fileupload');
         catboxData.append('fileToUpload', buffer, { filename: fileName });
@@ -366,7 +333,7 @@ function getMergedConfig() {
 
   const rawAppUrl = process.env.APP_URL || "";
   const cleanAppUrl = rawAppUrl.endsWith('/') ? rawAppUrl.slice(0, -1) : rawAppUrl;
-  const REDIRECT_URI = fileConfig.REDIRECT_URI || process.env.REDIRECT_URI || (cleanAppUrl ? `${cleanAppUrl}/auth/callback` : "http://localhost:3000/auth/callback");
+  const REDIRECT_URI = fileConfig.REDIRECT_URI || process.env.REDIRECT_URI || (cleanAppUrl ? `${cleanAppUrl}/auth/callback` : "http://localhost:20163/auth/callback");
 
   return {
     CLIENT_ID,

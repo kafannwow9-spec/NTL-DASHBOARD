@@ -2947,32 +2947,26 @@ async function uploadToImgBB(imageUrl) {
         return imageUrl;
     }
 
-    const rawKey = process.env.IMGBB_KEY || '';
-    const apiKey = rawKey.replace(/^IMGBB_KEY=\s*/i, '').replace(/["']/g, '').trim();
-    if (!apiKey) {
-        console.warn('⚠️ [ImgBB]: IMGBB_KEY is not defined in environment variables. Returning original URL.');
-        return imageUrl;
-    }
+    const apiKey = process.env.IMGBB_KEY || 'E664c19272197ad9ccedf89cb063a601';
 
     try {
         console.log(`[ImgBB]: Downloading image from: ${imageUrl}`);
         const response = await axios.get(imageUrl, { 
             responseType: 'arraybuffer',
-            timeout: 10000, // 10s download timeout
+            timeout: 10000,
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             }
         });
-        const base64Image = Buffer.from(response.data).toString('base64');
-
-        // Prepare multi-part form data with base64
+        
+        const buffer = Buffer.from(response.data);
         const form = new FormData();
-        form.append('image', base64Image);
+        form.append('image', buffer, { filename: 'upload.png' });
 
-        console.log('[ImgBB]: Uploading base64 image to ImgBB API...');
+        console.log('[ImgBB]: Uploading buffer to ImgBB API...');
         const uploadResponse = await axios.post(`https://api.imgbb.com/1/upload?key=${apiKey}`, form, {
             headers: form.getHeaders(),
-            timeout: 15000 // 15s upload timeout
+            timeout: 15000
         });
 
         if (uploadResponse.data && uploadResponse.data.data && uploadResponse.data.data.url) {
@@ -2984,7 +2978,7 @@ async function uploadToImgBB(imageUrl) {
         }
     } catch (error) {
         console.error('❌ [ImgBB Error]: Failed to upload image to ImgBB:', error.message || error);
-        return imageUrl; // Fallback to original URL on failure
+        return imageUrl;
     }
 }
 
@@ -5216,6 +5210,39 @@ client.on('messageCreate', async message => {
             console.error(e);
             return message.reply('❌ حدث خطأ أثناء تنفيذ الأمر.');
         }
+    }
+
+    if (message.content.startsWith('-صور')) {
+        if (message.attachments.size === 0) {
+            return message.reply('❌ | يرجى إرفاق صور مع الرسالة لرفعها.');
+        }
+
+        const msg = await message.reply('⏳ | جاري رفع الصور، يرجى الانتظار...');
+        const urls = [];
+
+        for (const [id, attachment] of message.attachments) {
+            // Check if it's an image
+            if (attachment.contentType && attachment.contentType.startsWith('image/')) {
+                const imgUrl = await uploadToImgBB(attachment.url);
+                if (imgUrl) {
+                    urls.push(imgUrl);
+                }
+            } else if (attachment.name.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+                // Fallback check by extension
+                const imgUrl = await uploadToImgBB(attachment.url);
+                if (imgUrl) {
+                    urls.push(imgUrl);
+                }
+            }
+        }
+
+        if (urls.length === 0) {
+            return msg.edit('❌ | فشل رفع الصور، تأكد من أنها صور صالحة.');
+        }
+
+        const response = urls.map((url, index) => `**الصورة ${index + 1}:**\n${url}`).join('\n\n');
+        await msg.edit(`✅ | تم رفع الصور بنجاح:\n\n${response}`);
+        return;
     }
 
     if (message.content.startsWith('-بلاك')) {
