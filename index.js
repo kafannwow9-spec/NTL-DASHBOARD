@@ -2,10 +2,53 @@ const { Client, GatewayIntentBits, Partials, EmbedBuilder, ActionRowBuilder, Str
 const fs = require('fs');
 const https = require('https');
 const path = require('path');
-const { createCanvas, GlobalFonts } = require('@napi-rs/canvas');
+const { createCanvas, GlobalFonts, loadImage } = require('@napi-rs/canvas');
 const axios = require('axios');
 const FormData = require('form-data');
+
+// ==========================================
+//    CONFIGURATION & API KEYS (EDIT HERE)
+// ==========================================
+let BACON_API_KEY = 'Bacon-0b8eedf8472d486a9684-2ab52bc8d5ec946e4d30'; // مفتاح تجاوز باكون
+let GEMINI_API_KEY = "AQ.Ab8RN6KHehX24Xvasqkm4Cb4DzH1P4aqELCn7D-_92lqclOpCA"; // مفتاح الذكاء الاصطناعي
+// ==========================================
+
 let messagesSentCount = 0;
+
+// Manual Scripts Management
+const MANUAL_SCRIPTS_PATH = path.join(__dirname, 'manual_scripts.json');
+function getManualScripts() {
+    try {
+        if (!fs.existsSync(MANUAL_SCRIPTS_PATH)) fs.writeFileSync(MANUAL_SCRIPTS_PATH, '[]');
+        return JSON.parse(fs.readFileSync(MANUAL_SCRIPTS_PATH, 'utf-8'));
+    } catch (e) {
+        console.error('[Manual Scripts Error]:', e);
+        return [];
+    }
+}
+function saveManualScripts(scripts) {
+    try {
+        fs.writeFileSync(MANUAL_SCRIPTS_PATH, JSON.stringify(scripts, null, 4));
+    } catch (e) {
+        console.error('[Save Manual Scripts Error]:', e);
+    }
+}
+
+// Register Canvas Fonts
+try {
+    const fontsDir = path.join(__dirname, 'assets', 'fonts');
+    if (fs.existsSync(fontsDir)) {
+        if (fs.existsSync(path.join(fontsDir, 'Cairo.ttf'))) GlobalFonts.registerFromPath(path.join(fontsDir, 'Cairo.ttf'), 'Cairo');
+        if (fs.existsSync(path.join(fontsDir, 'Tajawal.ttf'))) GlobalFonts.registerFromPath(path.join(fontsDir, 'Tajawal.ttf'), 'Tajawal');
+        if (fs.existsSync(path.join(fontsDir, 'Almarai.ttf'))) GlobalFonts.registerFromPath(path.join(fontsDir, 'Almarai.ttf'), 'Almarai');
+        if (fs.existsSync(path.join(fontsDir, 'Amiri.ttf'))) GlobalFonts.registerFromPath(path.join(fontsDir, 'Amiri.ttf'), 'Amiri');
+        if (fs.existsSync(path.join(fontsDir, 'Changa.ttf'))) GlobalFonts.registerFromPath(path.join(fontsDir, 'Changa.ttf'), 'Changa');
+        if (fs.existsSync(path.join(fontsDir, 'ReadexPro.ttf'))) GlobalFonts.registerFromPath(path.join(fontsDir, 'ReadexPro.ttf'), 'Readex Pro');
+        if (fs.existsSync(path.join(fontsDir, 'Poppins.ttf'))) GlobalFonts.registerFromPath(path.join(fontsDir, 'Poppins.ttf'), 'Poppins');
+    }
+} catch (fontErr) {
+    console.error('[Canvas Font Register Error]:', fontErr);
+}
 
 // Components V2 Builders
 class TextDisplayBuilder {
@@ -47,9 +90,22 @@ class MediaGalleryBuilder {
     }
     addItems(...callbacks) {
         for (const callback of callbacks) {
-            const builder = new MediaGalleryItemBuilder();
-            callback(builder);
-            this.data.items.push(builder.toJSON());
+            if (typeof callback === 'function') {
+                const builder = new MediaGalleryItemBuilder();
+                callback(builder);
+                this.data.items.push(builder.toJSON());
+            } else if (typeof callback === 'string') {
+                this.data.items.push({ media: { url: callback } });
+            } else if (callback && callback.media) {
+                this.data.items.push(callback);
+            }
+        }
+        return this;
+    }
+    addMedia(url) {
+        if (url) {
+            const mediaUrl = typeof url === 'string' ? url : (url.url || '');
+            if (mediaUrl) this.data.items.push({ media: { url: mediaUrl } });
         }
         return this;
     }
@@ -256,10 +312,6 @@ if (!BOT_SECRET) {
         console.error("Error reading BOT_SECRET from config.json:", err);
     }
 }
-let GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-if (!GEMINI_API_KEY || GEMINI_API_KEY === "MY_GEMINI_API_KEY" || GEMINI_API_KEY === "ضع_مفتاح_جيميني_هنا") {
-    GEMINI_API_KEY = "AQ.Ab8RN6KVozdbkJNadA1PQhJIQDw4RG2dtFbL0QJ_lE1B7T3uSQ";
-}
 const CLOUDFLARE_ACCOUNT_ID = "4dcafd8dea7635f5c2b537f3ea08d0c8";
 const CLOUDFLARE_API_TOKEN = "cfut_FjjN0KMnUPXzcpWkf9Pev5OWiOHE5R0LJOCRntU9660a673b";
 
@@ -307,6 +359,7 @@ function getDB() {
     if (!dbCache) loadDBSync();
     return dbCache;
 }
+const db = getDB();
 
 const activeTicketChannels = new Set();
 function updateTicketChannelsCache() {
@@ -343,13 +396,35 @@ global.getDB = getDB;
 global.saveDB = saveDB;
 
 function isGuildPremium(guildId) {
+    if (!guildId) return false;
     const database = getDB();
-    if (database._settings?.aiFreeMode) return true;
     if (!database[guildId]) return false;
     const premium = database[guildId].premium;
     if (!premium || !premium.expiresAt) return false;
     if (premium.expiresAt === 'lifetime') return true;
-    return Date.now() < premium.expiresAt;
+    return typeof premium.expiresAt === 'number' && Date.now() < premium.expiresAt;
+}
+
+function isUserBlacklisted(userId) {
+    const db = getDB();
+    if (!db.blacklist) db.blacklist = [];
+    return db.blacklist.includes(userId);
+}
+
+function obfuscateLua(code) {
+    // Basic robust Lua Obfuscator
+    // We escape strings and wrap them in a loader
+    try {
+        const header = `-- (deobfuscators by NTL BOT,  discord: https://discord.gg/tXvgdvfZeN)\n`;
+        
+        // 1. Simple variable renaming and string hexing
+        // This is a basic version. For a full-zip based one, we would require the external tool.
+        const hex = Buffer.from(code).toString('hex').match(/.{1,2}/g).map(h => '\\' + parseInt(h, 16)).join('');
+        const obf = `${header}local _ = "${hex}"; (loadstring or load)(_)();`;
+        return obf;
+    } catch (e) {
+        return `-- Error during obfuscation: ${e.message}\n${code}`;
+    }
 }
 
 
@@ -710,6 +785,10 @@ const server = http.createServer(async (req, res) => {
         const db = getDB();
         const localData = db[guildId] || {};
 
+        const guildEmojis = (guildObj && guildObj.emojis && guildObj.emojis.cache)
+            ? guildObj.emojis.cache.map(e => ({ id: String(e.id), name: e.name, animated: !!e.animated, url: e.url }))
+            : [];
+
         return sendJson(200, {
             success: true,
             hasBot: !!guildObj,
@@ -734,12 +813,58 @@ const server = http.createServer(async (req, res) => {
                     spamPunishment: 'timeout',
                     linkPunishment: 'timeout'
                 },
+                customEmbeds: localData.customEmbeds || {},
+                autoResponses: localData.autoResponses || [],
+                scriptSystem: localData.scriptSystem || {},
+                ai: localData.ai || {},
+                welcome: localData.welcome || {
+                    enabled: false,
+                    channelId: '',
+                    displayMode: 'text_image',
+                    messageText: 'مرحباً بك يا (Mentionuser) في سيرفر (Server)! نورتنا وأنت العضو رقم (Guildmember) 🎉',
+                    templateId: 'template_1',
+                    backgroundType: 'template',
+                    customBackgroundUrl: '',
+                    avatarX: 512,
+                    avatarY: 150,
+                    avatarRadius: 95,
+                    avatarBorderColor: '#3b82f6',
+                    avatarBorderWidth: 4,
+                    text1: 'WELCOME TO (Server)',
+                    text1Font: 'Cairo',
+                    text1Size: 34,
+                    text1Color: '#ffffff',
+                    text1X: 512,
+                    text1Y: 300,
+                    text1Align: 'center',
+                    text2: '(user)',
+                    text2Font: 'Cairo',
+                    text2Size: 44,
+                    text2Color: '#60a5fa',
+                    text2X: 512,
+                    text2Y: 365,
+                    text2Align: 'center',
+                    text3: 'Member #(Guildmember)',
+                    text3Font: 'Tajawal',
+                    text3Size: 22,
+                    text3Color: '#94a3b8',
+                    text3X: 512,
+                    text3Y: 420,
+                    text3Align: 'center',
+                    isV2: false,
+                    embedTitle: '🎉 مرحباً بك في السيرفر!',
+                    embedDesc: 'أهلاً وسهلاً بك (Mentionuser) في **(Server)**\nنتمنى لك قضاء وقت ممتع معنا!\nأنت العضو رقم **#(Guildmember)** في مجتمعنا.',
+                    embedColor: '#5865F2',
+                    embedFooter: 'نتمنى لك وقتاً ممتعاً!',
+                    embedThumbnail: 'none'
+                },
                 musicEnabled: localData.musicEnabled || false,
                 deltaKeys: localData.deltaKeys || {}
             },
             channels: textChannels,
             categories: categoryChannels,
-            roles: guildRoles
+            roles: guildRoles,
+            emojis: guildEmojis
         });
     }
 
@@ -751,29 +876,38 @@ const server = http.createServer(async (req, res) => {
 
         if (!guildId) return sendJson(400, { success: false, error: 'Missing guildId' });
 
-        const { panels, tickets, suggestions, azkar, protection, musicEnabled, deltaKeys, broadcastMessage, customEmbeds, autoResponses } = payload;
+        const { panels, tickets, suggestions, azkar, protection, musicEnabled, deltaKeys, broadcastMessage, customEmbeds, autoResponses, scriptSystem, ai, welcome } = payload;
         const db = getDB();
         if (!db[guildId]) {
             db[guildId] = { panels: {}, tickets: {}, counter: 0 };
         }
 
-        if (panels !== undefined) db[guildId].panels = panels;
-        if (customEmbeds !== undefined) db[guildId].customEmbeds = customEmbeds;
-        if (autoResponses !== undefined) db[guildId].autoResponses = autoResponses;
-        if (tickets !== undefined) {
-            db[guildId].tickets = tickets;
-            if (!db[guildId].panels) db[guildId].panels = {};
-            db[guildId].panels['p1'] = {
-                id: 'p1',
-                title: tickets.title || "🎫 قسم الدعم الفني والتذاكر",
-                description: tickets.description || "اضغط على الزر بالأسفل لفتح تذكرة تواصل مع فريق الدعم.",
-                categoryId: tickets.categoryId || null,
-                roles: tickets.supportRole ? [tickets.supportRole] : [],
-                buttons: [
-                    { name: tickets.btnLabel || 'فتح تذكرة', emoji: tickets.btnEmoji || '📩', categoryId: tickets.categoryId || null }
-                ]
+        if (panels !== undefined) {
+            db[guildId].panels = panels;
+        } else if (tickets !== undefined && (!db[guildId].panels || Object.keys(db[guildId].panels).length === 0)) {
+            db[guildId].panels = {
+                'p1': {
+                    id: 'p1',
+                    title: tickets.title || "🎫 قسم الدعم الفني والتذاكر",
+                    description: tickets.description || "اضغط على الزر بالأسفل لفتح تذكرة تواصل مع فريق الدعم.",
+                    welcome: tickets.welcome || 'مرحباً بك في التذكرة! تفضل بكتابة استفسارك وسيقوم فريق الدعم بالرد عليك في أقرب وقت.',
+                    welcome_img: tickets.welcome_img || '',
+                    color: tickets.color || '#5865f2',
+                    channelId: tickets.channelId || '',
+                    categoryId: tickets.categoryId || null,
+                    roles: tickets.supportRole ? [tickets.supportRole] : (tickets.roles || []),
+                    buttons: [
+                        { name: tickets.btnLabel || 'فتح تذكرة', emoji: tickets.btnEmoji || '📩', categoryId: tickets.categoryId || null }
+                    ]
+                }
             };
         }
+        if (tickets !== undefined) db[guildId].tickets = tickets;
+        if (customEmbeds !== undefined) db[guildId].customEmbeds = customEmbeds;
+        if (autoResponses !== undefined) db[guildId].autoResponses = autoResponses;
+        if (scriptSystem !== undefined) db[guildId].scriptSystem = scriptSystem;
+        if (ai !== undefined) db[guildId].ai = ai;
+        if (welcome !== undefined) db[guildId].welcome = welcome;
         if (suggestions !== undefined) db[guildId].suggestions = suggestions;
         if (azkar !== undefined) db[guildId].azkar = azkar;
         if (protection !== undefined) {
@@ -851,9 +985,9 @@ const server = http.createServer(async (req, res) => {
                                     container.addTextDisplayComponents(td => td.setContent(`-# ${embData.footer}`));
                                 }
 
+                                const btnRow = new ActionRowBuilder();
                                 if (embData.buttons && Array.isArray(embData.buttons) && embData.buttons.length > 0) {
-                                    const btnRow = new ActionRowBuilder();
-                                    embData.buttons.slice(0, 5).forEach((btn, idx) => {
+                                    embData.buttons.slice(0, 4).forEach((btn, idx) => {
                                         const b = new ButtonBuilder()
                                             .setCustomId(`custom_embed_btn:${embedId}:${idx}`)
                                             .setLabel(btn.label || 'اضغط هنا')
@@ -865,12 +999,33 @@ const server = http.createServer(async (req, res) => {
                                         if (btn.emoji) b.setEmoji(btn.emoji);
                                         btnRow.addComponents(b);
                                     });
+                                }
+
+                                // Add Translation Button if enabled
+                                if (embData.translationEnabled) {
+                                    const transBtn = new ButtonBuilder()
+                                        .setCustomId(`translation_btn:${embedId}`)
+                                        .setLabel('Translation')
+                                        .setEmoji('<:translation:1545522949975441498>')
+                                        .setStyle(ButtonStyle.Secondary);
+                                    btnRow.addComponents(transBtn);
+                                    
+                                    // Store translation data in DB for the interaction handler
+                                    if (!db.translations) db.translations = {};
+                                    db.translations[embedId] = {
+                                        ar: { title: embData.title, desc: descText },
+                                        en: { title: embData.translationTitle || embData.title, desc: embData.translationDesc || descText }
+                                    };
+                                    saveDB(db);
+                                }
+
+                                if (btnRow.components.length > 0) {
                                     container.addActionRowComponents(btnRow);
                                 }
 
                                 await chan.send({
                                     components: [container.toJSON()],
-                                    flags: MessageFlags.IsComponentsV2
+                                    flags: [MessageFlags.IsComponentsV2]
                                 });
                             } catch (v2Error) {
                                 console.warn('[V2 Send Fallback to Standard Embed]:', v2Error.message);
@@ -891,9 +1046,9 @@ const server = http.createServer(async (req, res) => {
 
                                 const msgPayload = { embeds: [embed] };
 
+                                const btnRow = new ActionRowBuilder();
                                 if (embData.buttons && Array.isArray(embData.buttons) && embData.buttons.length > 0) {
-                                    const btnRow = new ActionRowBuilder();
-                                    embData.buttons.slice(0, 5).forEach((btn, idx) => {
+                                    embData.buttons.slice(0, 4).forEach((btn, idx) => {
                                         const b = new ButtonBuilder()
                                             .setCustomId(`custom_embed_btn:${embedId}:${idx}`)
                                             .setLabel(btn.label || 'اضغط هنا')
@@ -905,6 +1060,16 @@ const server = http.createServer(async (req, res) => {
                                         if (btn.emoji) b.setEmoji(btn.emoji);
                                         btnRow.addComponents(b);
                                     });
+                                }
+                                if (embData.translationEnabled) {
+                                    const transBtn = new ButtonBuilder()
+                                        .setCustomId(`translation_btn:${embedId}`)
+                                        .setLabel('Translation')
+                                        .setEmoji('<:translation:1545522949975441498>')
+                                        .setStyle(ButtonStyle.Secondary);
+                                    btnRow.addComponents(transBtn);
+                                }
+                                if (btnRow.components.length > 0) {
                                     msgPayload.components = [btnRow];
                                 }
 
@@ -929,9 +1094,9 @@ const server = http.createServer(async (req, res) => {
 
                             const msgPayload = { embeds: [embed] };
 
+                            const btnRow = new ActionRowBuilder();
                             if (embData.buttons && Array.isArray(embData.buttons) && embData.buttons.length > 0) {
-                                const btnRow = new ActionRowBuilder();
-                                embData.buttons.slice(0, 5).forEach((btn, idx) => {
+                                embData.buttons.slice(0, 4).forEach((btn, idx) => {
                                     const b = new ButtonBuilder()
                                         .setCustomId(`custom_embed_btn:${embedId}:${idx}`)
                                         .setLabel(btn.label || 'اضغط هنا')
@@ -943,6 +1108,24 @@ const server = http.createServer(async (req, res) => {
                                     if (btn.emoji) b.setEmoji(btn.emoji);
                                     btnRow.addComponents(b);
                                 });
+                            }
+                            if (embData.translationEnabled) {
+                                const transBtn = new ButtonBuilder()
+                                    .setCustomId(`translation_btn:${embedId}`)
+                                    .setLabel('Translation')
+                                    .setEmoji('<:translation:1545522949975441498>')
+                                    .setStyle(ButtonStyle.Secondary);
+                                btnRow.addComponents(transBtn);
+                                
+                                if (!db.translations) db.translations = {};
+                                db.translations[embedId] = {
+                                    ar: { title: embData.title, desc: cleanDesc },
+                                    en: { title: embData.translationTitle || embData.title, desc: embData.translationDesc || cleanDesc },
+                                    img: imgUrl
+                                };
+                                saveDB(db);
+                            }
+                            if (btnRow.components.length > 0) {
                                 msgPayload.components = [btnRow];
                             }
 
@@ -984,6 +1167,7 @@ const server = http.createServer(async (req, res) => {
                         const rawDesc = pData.description || broadcastMessage.description || tickets?.description || "اضغط على الزر بالأسفل لفتح تذكرة تواصل مع فريق الدعم.";
                         const pColor = pData.color || broadcastMessage.color || tickets?.color || '#5865f2';
                         const pImgUrl = getAbsoluteUrl(pData.img || pData.imageUrl);
+                        const embedId = pid || 'p1';
 
                         if (isPanelV2) {
                             try {
@@ -1012,11 +1196,27 @@ const server = http.createServer(async (req, res) => {
                                 if (pImgUrl && pImgUrl !== 'لايوجد' && pImgUrl.startsWith('http')) {
                                     container.addMediaGalleryComponents(mg => mg.addItems(item => item.setURL(pImgUrl)));
                                 }
+
+                                if (pData.translationEnabled) {
+                                    const transBtn = new ButtonBuilder()
+                                        .setCustomId(`translation_btn:${embedId}`)
+                                        .setLabel('Translation')
+                                        .setEmoji('<:translation:1545522949975441498>')
+                                        .setStyle(ButtonStyle.Secondary);
+                                    row.addComponents(transBtn);
+                                    
+                                    if (!db.translations) db.translations = {};
+                                    db.translations[embedId] = {
+                                        ar: { title: pTitle, desc: rawDesc },
+                                        en: { title: pData.translationTitle || pTitle, desc: pData.translationDesc || rawDesc }
+                                    };
+                                }
+
                                 container.addActionRowComponents(row);
 
                                 await chan.send({
                                     components: [container.toJSON()],
-                                    flags: MessageFlags.IsComponentsV2
+                                    flags: [MessageFlags.IsComponentsV2]
                                 });
                             } catch (panelV2Err) {
                                 console.warn('[Panel V2 Send Fallback]:', panelV2Err.message);
@@ -1027,6 +1227,20 @@ const server = http.createServer(async (req, res) => {
                                     .setDescription(cleanPanelDesc);
                                 if (pImgUrl && pImgUrl !== 'لايوجد' && pImgUrl.startsWith('http')) {
                                     embed.setImage(pImgUrl);
+                                }
+                                if (pData.translationEnabled) {
+                                    const transBtn = new ButtonBuilder()
+                                        .setCustomId(`translation_btn:${embedId}`)
+                                        .setLabel('Translation')
+                                        .setEmoji('<:translation:1545522949975441498>')
+                                        .setStyle(ButtonStyle.Secondary);
+                                    row.addComponents(transBtn);
+                                    
+                                    if (!db.translations) db.translations = {};
+                                    db.translations[embedId] = {
+                                        ar: { title: pTitle, desc: rawDesc },
+                                        en: { title: pData.translationTitle || pTitle, desc: pData.translationDesc || rawDesc }
+                                    };
                                 }
                                 await chan.send({ embeds: [embed], components: [row] });
                             }
@@ -1039,14 +1253,29 @@ const server = http.createServer(async (req, res) => {
                             if (pImgUrl && pImgUrl !== 'لايوجد' && pImgUrl.startsWith('http')) {
                                 embed.setImage(pImgUrl);
                             }
+                            if (pData.translationEnabled) {
+                                const transBtn = new ButtonBuilder()
+                                    .setCustomId(`translation_btn:${embedId}`)
+                                    .setLabel('Translation')
+                                    .setEmoji('<:translation:1545522949975441498>')
+                                    .setStyle(ButtonStyle.Secondary);
+                                row.addComponents(transBtn);
+                                
+                                if (!db.translations) db.translations = {};
+                                db.translations[embedId] = {
+                                    ar: { title: pTitle, desc: rawDesc },
+                                    en: { title: pData.translationTitle || pTitle, desc: pData.translationDesc || rawDesc }
+                                };
+                            }
                             await chan.send({ embeds: [embed], components: [row] });
                         }
                         deliveryLog = { status: "SENT", message: `تم إرسال لوحة التذاكر لقناة #${chan.name}` };
                     } else if (broadcastMessage.type === 'suggestion_panel') {
-                        const embed = new EmbedBuilder()
-                            .setColor(broadcastMessage.color || suggestions?.color || '#12a524')
-                            .setTitle(broadcastMessage.title || suggestions?.title || "💡 صندوق الاقتراحات والتطوير")
-                            .setDescription(broadcastMessage.description || suggestions?.description || "أهلاً بكم! يمكنك كتابة اقتراحك وطرح أفكارك لتطوير السيرفر هنا 💡");
+                        const sData = db[guildId]?.suggestions?.panels?.find(p => p.id === broadcastMessage.panelId) || {};
+                        const sTitle = broadcastMessage.title || sData.title || suggestions?.title || "💡 صندوق الاقتراحات والتطوير";
+                        const sDesc = broadcastMessage.description || sData.description || suggestions?.description || "أهلاً بكم! يمكنك كتابة اقتراحك وطرح أفكارك لتطوير السيرفر هنا 💡";
+                        const sColor = broadcastMessage.color || sData.color || suggestions?.color || '#12a524';
+                        const sid = broadcastMessage.panelId || 's1';
 
                         const row = new ActionRowBuilder().addComponents(
                             new ButtonBuilder()
@@ -1055,6 +1284,27 @@ const server = http.createServer(async (req, res) => {
                                 .setEmoji('1517591602049056829')
                                 .setStyle(ButtonStyle.Success)
                         );
+
+                        if (sData.translationEnabled) {
+                            const transBtn = new ButtonBuilder()
+                                .setCustomId(`translation_btn:${sid}`)
+                                .setLabel('Translation')
+                                .setEmoji('<:translation:1545522949975441498>')
+                                .setStyle(ButtonStyle.Secondary);
+                            row.addComponents(transBtn);
+                            
+                            if (!db.translations) db.translations = {};
+                            db.translations[sid] = {
+                                ar: { title: sTitle, desc: sDesc },
+                                en: { title: sData.translationTitle || sTitle, desc: sData.translationDesc || sDesc }
+                            };
+                        }
+
+                        const embed = new EmbedBuilder()
+                            .setColor(sColor)
+                            .setTitle(sTitle)
+                            .setDescription(sDesc);
+
                         await chan.send({ embeds: [embed], components: [row] });
                         deliveryLog = { status: "SENT", message: `تم إرسال لوحة الاقتراحات لقناة #${chan.name}` };
                     } else if (broadcastMessage.content) {
@@ -1107,6 +1357,35 @@ const server = http.createServer(async (req, res) => {
             return sendJson(200, { success: true, message: `تم إرسال الذكر بنجاح لقناة #${channel.name}` });
         } catch (err) {
             return sendJson(500, { success: false, error: err.message });
+        }
+    }
+
+    // 4.5 POST /api/test-welcome or /api/welcome/test
+    if ((pathname === '/api/test-welcome' || pathname === '/api/welcome/test') && req.method === 'POST') {
+        const payload = await getBody();
+        const { guildId, welcome } = payload;
+        if (!guildId) return sendJson(400, { success: false, error: 'لم يتم تحديد معرف السيرفر' });
+
+        const targetGuild = client.guilds.cache.get(guildId) || await client.guilds.fetch(guildId).catch(() => null);
+        if (!targetGuild) return sendJson(404, { success: false, error: 'البوت غير متواجد في هذا السيرفر حالياً' });
+
+        try {
+            const member = targetGuild.members.me || await targetGuild.members.fetch(client.user.id).catch(() => null) || {
+                id: client.user.id,
+                displayName: client.user.username,
+                user: client.user,
+                guild: targetGuild,
+                displayAvatarURL: (opts) => client.user.displayAvatarURL(opts)
+            };
+
+            const result = await handleWelcomeMember(member, true, welcome);
+            if (result.success) {
+                return sendJson(200, { success: true, message: `تم إرسال رسالة الترحيب التجريبية في روم #${result.channelName || ''} بنجاح!` });
+            } else {
+                return sendJson(400, { success: false, error: result.error || 'فشل إرسال الترحيب' });
+            }
+        } catch (err) {
+            return sendJson(500, { success: false, error: `خطأ أثناء التجربة: ${err.message}` });
         }
     }
 
@@ -1324,7 +1603,70 @@ function resolveTicketCategory(panel, btnIdx, guild) {
 }
 
 const activeBypassUsers = new Set();
+const bypassMemoryCache = new Map(); // Fast In-Memory Cache (URL -> Key)
+
+// Cleanup old cache entries every 10 minutes
+setInterval(() => {
+    const now = Date.now();
+    for (const [key, item] of bypassMemoryCache.entries()) {
+        if (now - item.timestamp > 15 * 60 * 1000) {
+            bypassMemoryCache.delete(key);
+        }
+    }
+}, 10 * 60 * 1000);
+
+function getDynamicBypassTime(startTime) {
+    const raw = (performance.now() - startTime) / 1000;
+    let display;
+    if (raw <= 1.5) {
+        display = 1.10 + (Math.random() * 0.45);
+    } else if (raw <= 3.5) {
+        display = 1.85 + (Math.random() * 0.65);
+    } else if (raw <= 6.5) {
+        // e.g. instead of 6s, display snappy 3.20s - 4.10s
+        display = 3.20 + (Math.random() * 0.85);
+    } else {
+        // e.g. instead of 7s-12s, display 4.15s - 4.85s
+        display = 4.15 + (Math.random() * 0.70);
+    }
+    return display.toFixed(2);
+}
+
 const KEY_FILE = 'key.txt';
+const BACON_KEY_FILE = 'bacon_key.txt';
+
+function getBaconApiKey() {
+    try {
+        if (fs.existsSync(BACON_KEY_FILE)) {
+            const saved = fs.readFileSync(BACON_KEY_FILE, 'utf8').trim();
+            if (saved.length > 0) return saved;
+        }
+    } catch (e) {}
+    try {
+        const db = getDB();
+        if (db && db.baconApiKey) {
+            return db.baconApiKey;
+        }
+    } catch (e) {}
+    return BACON_API_KEY;
+}
+
+function setBaconApiKey(newKey) {
+    if (!newKey || typeof newKey !== 'string') return;
+    BACON_API_KEY = newKey.trim();
+    try {
+        fs.writeFileSync(BACON_KEY_FILE, BACON_API_KEY);
+    } catch (e) {}
+    try {
+        const db = getDB();
+        if (db) {
+            db.baconApiKey = BACON_API_KEY;
+            saveDB(db);
+        }
+    } catch (e) {}
+    console.log(`[Bacon API Key] Updated to: ${BACON_API_KEY}`);
+}
+
 const KEY_URL = 'https://trw.lat/api/lvlol/captchaLess';
 const BYPASS_URL = 'https://trw.lat/api/bypass';
 const NEW_BYPASS_API_URL = 'https://trw.lat/api/bypass';
@@ -1378,7 +1720,7 @@ async function fetchOldApi(deltaLink) {
                 ...bypassHeaders,
                 'x-api-key': apiKey
             },
-            signal: AbortSignal.timeout(8000)
+            signal: AbortSignal.timeout(15000)
         });
 
         const data = await res.json().catch(() => null);
@@ -1449,7 +1791,7 @@ async function fetchWithNewApiKey(deltaLink, apiKey) {
                     'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36',
                     'Accept': 'application/json, text/plain, */*'
                 },
-                signal: AbortSignal.timeout(4000)
+                signal: AbortSignal.timeout(10000) // Increased to 10s
             });
 
             const data = await res.json().catch(() => null);
@@ -1488,7 +1830,7 @@ async function fetchAwsBypassApi(deltaLink) {
                 'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36',
                 'Accept': 'application/json, text/plain, */*'
             },
-            signal: AbortSignal.timeout(6000)
+            signal: AbortSignal.timeout(12000) // Increased to 12s
         });
 
         const data = await res.json().catch(() => null);
@@ -1515,118 +1857,226 @@ async function fetchAwsBypassApi(deltaLink) {
     return { bypassedLink: null, error: null };
 }
 
+async function fetchTrwBypass(targetUrl) {
+    const encodedUrl = encodeURIComponent(targetUrl);
+    const apiUrl = `https://trw.lat/api/bypass?url=${encodedUrl}&mode=stream&verbose=true`;
+
+    return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+            resolve(null);
+        }, 15000); // Increased to 15s
+
+        axios({
+            method: 'get',
+            url: apiUrl,
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36',
+                'Referer': 'https://v.rip.linkvertise.lol/'
+            },
+            responseType: 'stream'
+        }).then(response => {
+            response.data.on('data', (chunk) => {
+                const lines = chunk.toString().split('\n');
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        try {
+                            const jsonStr = line.replace('data: ', '').trim();
+                            const data = JSON.parse(jsonStr);
+                            if (data.status === 'success' && data.result) {
+                                clearTimeout(timeout);
+                                resolve({ bypassedLink: data.result });
+                                return;
+                            }
+                        } catch (e) {}
+                    }
+                }
+            });
+
+            response.data.on('error', () => {
+                clearTimeout(timeout);
+                resolve(null);
+            });
+            
+            response.data.on('end', () => {
+                clearTimeout(timeout);
+                resolve(null);
+            });
+        }).catch(() => {
+            clearTimeout(timeout);
+            resolve(null);
+        });
+    });
+}
+
 async function bypassDeltaLink(deltaLink) {
-    console.log(`[Delta Bypass] Processing bypass request for: ${deltaLink.slice(0, 60)}...`);
-    const isPlatoRelay = deltaLink.toLowerCase().includes('platorelay') || deltaLink.toLowerCase().includes('platoboost');
-
-    if (!isPlatoRelay) {
-        return { bypassedLink: null, error: 'UNSUPPORTED_LINK', isUnsupported: true };
+    if (!deltaLink || typeof deltaLink !== 'string') {
+        return { bypassedLink: null, error: 'الرابط غير صالح.' };
     }
+    const cleanLink = deltaLink.trim();
+    console.log(`[Delta Bypass] Fast Processing: ${cleanLink.slice(0, 60)}...`);
 
-    try {
-        const { fetchKey } = require('./platorelayBypass.js');
-        console.log(`[PlatoRelay Native Solver] Starting native solve for: ${deltaLink.slice(0, 60)}...`);
-        const res = await fetchKey(deltaLink);
-        if (res && res.key) {
-            console.log(`[PlatoRelay Native Solver] Success! Key: ${res.key}`);
-            return { bypassedLink: res.key, error: null };
+    // 1. Instant Cache Lookup
+    if (bypassMemoryCache.has(cleanLink)) {
+        const cached = bypassMemoryCache.get(cleanLink);
+        if (cached && (Date.now() - cached.timestamp < 15 * 60 * 1000)) {
+            console.log(`[Delta Bypass] Instant Cache HIT!`);
+            return { bypassedLink: cached.key, error: null };
         }
-    } catch (nativeErr) {
-        console.error(`[PlatoRelay Native Solver Notice]: ${nativeErr.message}`);
     }
 
-    const result = await fetchWithNewApiKey(deltaLink, 'bypass_limited_9f82a1c4e7230b54d68e10fa');
-    if (result && result.bypassedLink) {
-        return result;
+    const lower = cleanLink.toLowerCase();
+    const isPlatoRelay = lower.includes('platorelay') || lower.includes('platoboost') || lower.includes('gateway.platoboost');
+    const TRW_API_KEY = 'TRW_FREE-GAY-15a92945-9b04-4c75-8337-f2a6007281e9';
+
+    // Helper to validate and clean key
+    const validateKey = (k) => {
+        if (!k || typeof k !== 'string') return null;
+        const trimmed = k.trim();
+        const low = trimmed.toLowerCase();
+        if (trimmed.length < 3) return null;
+        if (low.includes('fail') || low.includes('error') || low.includes('invalid') || low.includes('session has expired') || low.includes('get a new link')) {
+            return null;
+        }
+        return trimmed;
+    };
+
+    const tasks = [];
+
+    // Worker 1: Native engine for PlatoRelay / PlatoBoost (High priority)
+    if (isPlatoRelay) {
+        tasks.push(
+            (async () => {
+                try {
+                    const { fetchKey } = require('./platorelayBypass.js');
+                    const res = await fetchKey(cleanLink);
+                    const valid = validateKey(res?.key);
+                    if (valid) {
+                        console.log(`[Delta Bypass] Native Engine won the race!`);
+                        return valid;
+                    }
+                } catch (e) {}
+                throw new Error('Native engine failed');
+            })()
+        );
     }
-    const awsRes = await fetchAwsBypassApi(deltaLink);
-    if (awsRes && awsRes.bypassedLink) {
-        return awsRes;
+
+    // Worker 2: Fast TRW Primary API
+    tasks.push(
+        (async () => {
+            try {
+                const apiUrl = `https://trw.lat/api/bypass?apikey=${TRW_API_KEY}&url=${encodeURIComponent(cleanLink)}`;
+                const res = await fetch(apiUrl, {
+                    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+                    signal: AbortSignal.timeout(8000)
+                });
+                const data = await res.json().catch(() => null);
+                const rawKey = data?.result || data?.bypassed || data?.key || data?.url || data?.link || data?.destination;
+                const valid = validateKey(rawKey);
+                if (valid) {
+                    console.log(`[Delta Bypass] TRW Primary API won the race!`);
+                    return valid;
+                }
+            } catch (e) {}
+            throw new Error('TRW Primary API failed');
+        })()
+    );
+
+    // Worker 3: Direct IP / AWS Bypass Fast Endpoint
+    tasks.push(
+        (async () => {
+            try {
+                const apiUrl = `http://13.250.130.150/api/bypass?url=${encodeURIComponent(cleanLink)}`;
+                const res = await fetch(apiUrl, {
+                    headers: { 'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36' },
+                    signal: AbortSignal.timeout(7500)
+                });
+                const data = await res.json().catch(() => null);
+                const rawKey = data?.result || data?.bypassed || data?.key || data?.url || data?.link || data?.destination;
+                const valid = validateKey(rawKey);
+                if (valid) {
+                    console.log(`[Delta Bypass] Direct Fast Node won the race!`);
+                    return valid;
+                }
+            } catch (e) {}
+            throw new Error('Direct Fast Node failed');
+        })()
+    );
+
+    // Worker 4: Dynamic API Key Endpoint
+    tasks.push(
+        (async () => {
+            try {
+                const res = await fetchOldApi(cleanLink);
+                const valid = validateKey(res?.bypassedLink);
+                if (valid) {
+                    console.log(`[Delta Bypass] Dynamic Key Engine won the race!`);
+                    return valid;
+                }
+            } catch (e) {}
+            throw new Error('Dynamic Key failed');
+        })()
+    );
+
+    // Worker 5: Bacon Bypass API (POST https://baconbypass.online/bypass)
+    tasks.push(
+        (async () => {
+            try {
+                const baconKey = getBaconApiKey();
+                if (!baconKey) throw new Error('No bacon key');
+                const res = await fetch('https://baconbypass.online/bypass', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                    },
+                    body: JSON.stringify({
+                        url: cleanLink,
+                        apikey: baconKey
+                    }),
+                    signal: AbortSignal.timeout(7500)
+                });
+                const data = await res.json().catch(() => null);
+                const rawKey = data?.result || data?.bypassed || data?.key || data?.url || data?.link || data?.destination;
+                const valid = validateKey(rawKey);
+                if (valid) {
+                    console.log(`[Delta Bypass] Bacon Bypass API won the race!`);
+                    return valid;
+                }
+            } catch (e) {}
+            throw new Error('Bacon Bypass API failed');
+        })()
+    );
+
+    // Race all tasks concurrently - first successful resolver wins immediately!
+    try {
+        const winningKey = await Promise.any(tasks);
+        if (winningKey) {
+            bypassMemoryCache.set(cleanLink, { key: winningKey, timestamp: Date.now() });
+            return { bypassedLink: winningKey, error: null };
+        }
+    } catch (raceErr) {
+        console.warn(`[Delta Bypass] All concurrent workers failed or timed out.`);
     }
-    const oldRes = await fetchOldApi(deltaLink);
-    if (oldRes && oldRes.bypassedLink) {
-        return oldRes;
-    }
+
+    // Final Fallback: Stream API
+    try {
+        const streamRes = await fetchTrwBypass(cleanLink);
+        const valid = validateKey(streamRes?.bypassedLink);
+        if (valid) {
+            bypassMemoryCache.set(cleanLink, { key: valid, timestamp: Date.now() });
+            return { bypassedLink: valid, error: null };
+        }
+    } catch (e) {}
+
     return {
         bypassedLink: null,
-        error: 'bypass cancelled'
+        error: 'فشلت عملية التخطي، يرجى التأكد من صحة الرابط أو المحاولة لاحقاً.'
     };
 }
 
 // ==================== SCRIPT SEARCH MODULE ====================
 
 const scriptSearchCache = new Map();
-
-function mapArabicGameNameToEnglish(query) {
-    const mappings = {
-        'بلوكس فروت': 'Blox Fruits',
-        'بلوكس فروتس': 'Blox Fruits',
-        'بلور فروت': 'Blox Fruits',
-        'بلوكس': 'Blox Fruits',
-        'فاكهة': 'Blox Fruits',
-        'بروكهافن': 'Brookhaven',
-        'بيوت': 'Brookhaven',
-        'ماب البيوت': 'Brookhaven',
-        'ادوبت مي': 'Adopt Me',
-        'أدوبت مي': 'Adopt Me',
-        'ادوبت': 'Adopt Me',
-        'أدوبت': 'Adopt Me',
-        'موردر': 'Murder Mystery 2',
-        'مردر': 'Murder Mystery 2',
-        'مادر ميستري': 'Murder Mystery 2',
-        'ميردر ميستري': 'Murder Mystery 2',
-        'سجن': 'Jailbreak',
-        'جيلبريك': 'Jailbreak',
-        'ماب السجن': 'Jailbreak',
-        'كينق ليجاسي': 'King Legacy',
-        'كينج ليجاسي': 'King Legacy',
-        'سترونجست': 'The Strongest Battlegrounds',
-        'ذا سترونجست': 'The Strongest Battlegrounds',
-        'اقوى رجل': 'The Strongest Battlegrounds',
-        'بيدوارز': 'BedWars',
-        'بيد ورز': 'BedWars',
-        'دورس': 'Doors',
-        'ابواب': 'Doors',
-        'أبواب': 'Doors',
-        'دونيت': 'PLS DONATE',
-        'تبرع': 'PLS DONATE',
-        'تبرعات': 'PLS DONATE',
-        'تايكون': 'Tycoon',
-        'تياكون': 'Tycoon',
-        'فيش': 'Fisch',
-        'سمك': 'Fisch',
-        'بليد بول': 'Blade Ball',
-        'انمي': 'Anime',
-        'أنمي': 'Anime',
-        'رايفالز': 'Rivals',
-        'رايفلز': 'Rivals',
-        'ريفالز': 'Rivals',
-        'جراند بيس': 'Grand Piece Online',
-        'ارسنال': 'Arsenal',
-        'أرسنال': 'Arsenal',
-        'شيندو': 'Shindo Life',
-        'شيندو لايف': 'Shindo Life',
-        'بيتبول': 'Pet Simulator 99',
-        'بيت سيميليتر': 'Pet Simulator 99',
-        'سول': "Sol's RNG",
-        'أنمي ديفيندرز': 'Anime Defenders',
-        'انمي ديفيندرز': 'Anime Defenders',
-        'طيران': 'Fly',
-        'سبيشال': 'Special',
-        'سرعة': 'Speed',
-        'اوتو فارم': 'Auto Farm',
-        'أوتو فارم': 'Auto Farm',
-        'هاب': 'Hub'
-    };
-
-    let result = query;
-    for (const [ar, en] of Object.entries(mappings)) {
-        if (result.includes(ar)) {
-            result = result.replace(new RegExp(ar, 'gi'), en);
-        }
-    }
-    return result;
-}
 
 function buildScriptContainer(script, currentIndex, totalScripts, msgId, prefix) {
     const hasKey = script.key ? 'نعم' : 'لا';
@@ -1706,11 +2156,46 @@ function buildScriptContainer(script, currentIndex, totalScripts, msgId, prefix)
 
 const scriptSearchApiCache = new Map();
 
+/**
+ * استخدام الذكاء الاصطناعي لتوسيع كلمات البحث وتحويلها بين العربي والإنجليزي
+ */
+async function getExpandedSearchQueries(rawQuery, guildId = null) {
+    const db = getDB();
+    const systemPrompt = `أنت خبير محترف في ألعاب روبلوكس (Roblox) وأنظمة السكربتات (Exploits). مهمتك هي استلام كلمة بحث وتحويلها إلى قائمة شاملة من الكلمات المفتاحية لضمان العثور على أفضل السكربتات في مواقع مثل ScriptBlox و WeAreDevs و RScripts.
+يجب أن تشمل القائمة:
+1. اسم اللعبة بالإنجليزية الصحيح (مثال: "بروكهافن" -> Brookhaven RP).
+2. اختصارات اللعبة المشهورة (مثل Blox Fruits -> BF, Murder Mystery 2 -> MM2).
+3. أسماء المطورين أو الـ Hubs المشهورة المرتبطة باللعبة إن وجدت.
+4. ترجمة دقيقة للعبة للعربية والإنجليزية.
+5. كلمات دلالية إضافية مثل "Admin", "Autofarm", "Hub".
+
+رد فقط بقائمة كلمات مفصولة بفاصلة فقط، بدون أي مقدمات أو نص إضافي.
+مثال: "blox fruits" -> Blox Fruits, BF, بلوكس فروت, Redz Hub, Hoho Hub, Autofarm`;
+
+    try {
+        const response = await callGeminiAPI(systemPrompt, rawQuery, [], guildId);
+        if (response && response.length > 2) {
+            return response.split(',').map(s => s.trim()).filter(Boolean);
+        }
+    } catch (e) {
+        console.error('[AI Expansion Error]:', e);
+    }
+    return [rawQuery];
+}
+
 async function handleScriptSearchMessage(message) {
     if (!message.guildId || message.author.bot) return false;
 
     const db = getDB();
     const scriptSys = db[message.guildId]?.scriptSystem;
+    
+    // Debug logging
+    if (scriptSys && scriptSys.enabled && message.channelId === scriptSys.channelId) {
+        if (message.content.trim().startsWith(scriptSys.prefix || 'سكربت')) {
+            console.log(`[Script Search]: User ${message.author.tag} searching for: ${message.content}`);
+        }
+    }
+
     if (!scriptSys || !scriptSys.enabled || message.channelId !== scriptSys.channelId) {
         return false;
     }
@@ -1728,7 +2213,7 @@ async function handleScriptSearchMessage(message) {
     }
 
     const searchMsg = await message.channel.send({
-        content: `<a:Search:1535951004552532008> | **جاري البحث عن \`${rawQuery}\`**`
+        content: `<a:Search:1535951004552532008> | **جاري البحث الشامل عن \`${rawQuery}\`...**`
     }).catch(() => null);
 
     if (!searchMsg) return true;
@@ -1745,7 +2230,9 @@ async function handleScriptSearchMessage(message) {
             cleanQuery = cleanQuery.replace(/مفتاح/gi, '').trim();
         }
 
-        const mappedQuery = mapArabicGameNameToEnglish(cleanQuery);
+        // توسيع كلمات البحث باستخدام الذكاء الاصطناعي
+        const queriesToTry = await getExpandedSearchQueries(cleanQuery, message.guildId);
+        if (!queriesToTry.includes(cleanQuery)) queriesToTry.unshift(cleanQuery);
 
         const cacheKey = `${filterKey}:${cleanQuery.toLowerCase()}`;
         const now = Date.now();
@@ -1769,55 +2256,92 @@ async function handleScriptSearchMessage(message) {
                 const container = buildScriptContainer(finalScripts[0], 0, finalScripts.length, searchMsg.id, prefix);
                 await searchMsg.edit({
                     content: null,
-                    components: [container],
-                    flags: MessageFlags.IsComponentsV2
+                    components: [container.toJSON()],
+                    flags: [MessageFlags.IsComponentsV2]
                 }).catch(() => {});
                 return true;
             }
         }
 
-        const queriesToTry = [];
-        if (mappedQuery) queriesToTry.push(mappedQuery);
-        if (cleanQuery && cleanQuery !== mappedQuery && !queriesToTry.includes(cleanQuery)) {
-            queriesToTry.push(cleanQuery);
-        }
-
-        // Fallback broad terms if query contains game names
-        const knownGames = ['Blox Fruits', 'Brookhaven', 'Adopt Me', 'Murder Mystery 2', 'Jailbreak', 'King Legacy', 'The Strongest Battlegrounds', 'BedWars', 'Doors', 'PLS DONATE', 'Fisch', 'Blade Ball', 'Rivals', 'Grand Piece Online', 'Arsenal', 'Shindo Life', 'Pet Simulator 99'];
-        for (const g of knownGames) {
-            if ((mappedQuery.toLowerCase().includes(g.toLowerCase()) || cleanQuery.toLowerCase().includes(g.toLowerCase())) && !queriesToTry.includes(g)) {
-                queriesToTry.push(g);
-            }
-        }
-
         let allScripts = [];
         const seen = new Set();
+        const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36';
 
-        for (const q of queriesToTry) {
-            for (const page of [1, 2]) {
-                try {
-                    const searchUrl = `https://scriptblox.com/api/script/search?q=${encodeURIComponent(q)}&page=${page}`;
-                    const response = await axios.get(searchUrl, {
-                        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
-                        timeout: 2500
-                    });
-                    const scripts = response.data?.result?.scripts || [];
-                    for (const s of scripts) {
-                        const id = s._id || s.id || (s.title + s.script);
-                        if (!seen.has(id)) {
-                            seen.add(id);
-                            allScripts.push(s);
-                        }
+        // البحث في السكربتات المضافة يدوياً أولاً
+        const manualScripts = getManualScripts();
+        const cleanQueryLower = cleanQuery.toLowerCase();
+        manualScripts.forEach(s => {
+            if (s.title.toLowerCase().includes(cleanQueryLower) || (s.game?.name && s.game.name.toLowerCase().includes(cleanQueryLower))) {
+                seen.add(s.id);
+                allScripts.push(s);
+            }
+        });
+
+        // تجربة البحث عن كل الكلمات المقترحة في مصادر متعددة
+        for (const q of queriesToTry.slice(0, 15)) {
+            const fetchPromises = [
+                // Source 1: ScriptBlox (Up to 20 pages for more results)
+                (async () => {
+                    let results = [];
+                    for (const page of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]) {
+                        try {
+                            const res = await axios.get(`https://scriptblox.com/api/script/search?q=${encodeURIComponent(q)}&page=${page}`, { 
+                                headers: { 'User-Agent': userAgent },
+                                timeout: 5000
+                            });
+                            const batch = (res.data?.result?.scripts || []).map(s => ({
+                                title: s.title,
+                                game: { name: s.game?.name || "Unknown Game", imageUrl: s.game?.imageUrl || "" },
+                                key: !!s.key,
+                                verified: !!(s.verified || s.owner?.isVerified),
+                                views: s.views || 0,
+                                likeCount: s.likeCount || 0,
+                                script: s.script,
+                                source: "ScriptBlox",
+                                id: s._id || s.id
+                            }));
+                            results.push(...batch);
+                            if (batch.length < 20) break; 
+                        } catch (e) { break; }
                     }
-                    if (scripts.length === 0) break; // No more pages for this query
-                } catch (e) {
-                    // Ignore single page fetch errors
+                    return results;
+                })(),
+                // Source 2: WeAreDevs
+                (async () => {
+                    try {
+                        const res = await axios.get(`https://wearedevs.net/api/scripts/search?s=${encodeURIComponent(q)}`, {
+                            headers: { 'User-Agent': userAgent },
+                            timeout: 5000
+                        });
+                        return (res.data || []).map(s => ({
+                            title: s.name,
+                            game: { name: q, imageUrl: "" },
+                            key: false, 
+                            verified: true,
+                            views: 0,
+                            likeCount: 0,
+                            script: `loadstring(game:HttpGet("${s.raw}"))()`,
+                            source: "WeAreDevs",
+                            id: s._id
+                        }));
+                    } catch (e) { return []; }
+                })()
+            ];
+
+            const results = await Promise.all(fetchPromises);
+            for (const batch of results) {
+                for (const s of batch) {
+                    const uniqueId = s.id || (s.title + s.script);
+                    if (!seen.has(uniqueId)) {
+                        seen.add(uniqueId);
+                        allScripts.push(s);
+                    }
                 }
             }
-            if (allScripts.length >= 30) break; // Sufficient results found
+            if (allScripts.length >= 10000) break; // Increased limit
         }
 
-        // FALLBACK LOCAL SCRIPT ENGINE IF ONLINE API IS BLOCKED OR RETURNED 0 RESULTS
+        // FALLBACK LOCAL SCRIPTS
         if (allScripts.length === 0) {
             const FALLBACK_ROBLOX_SCRIPTS = [
                 {
@@ -1982,7 +2506,7 @@ async function handleScriptSearchMessage(message) {
                 }
             ];
 
-            const searchTerms = [cleanQuery.toLowerCase(), mappedQuery ? mappedQuery.toLowerCase() : ''].filter(Boolean);
+            const searchTerms = queriesToTry.map(q => q.toLowerCase());
             
             for (const item of FALLBACK_ROBLOX_SCRIPTS) {
                 const titleLower = item.title.toLowerCase();
@@ -1996,7 +2520,7 @@ async function handleScriptSearchMessage(message) {
                     term.split(/\s+/).some(w => w.length > 2 && (titleLower.includes(w) || gameLower.includes(w) || kwStr.includes(w)))
                 );
 
-                if (isMatch || searchTerms.length === 0) {
+                if (isMatch) {
                     allScripts.push(item);
                 }
             }
@@ -2007,27 +2531,30 @@ async function handleScriptSearchMessage(message) {
             }
         }
 
-        // Score & sort scripts so specific map scripts appear FIRST and 50+/90+ multi-game hubs drop to the bottom
+        if (allScripts.length === 0) {
+            return searchMsg.edit({ content: `**<:No:1516534087161221233> | عذراً، لم يتم العثور على أي سكربتات لـ \`${rawQuery}\` حالياً.**` }).catch(() => {});
+        }
+
+        // Score & sort scripts
         const multiGameRegex = /(\b\d+\+\s*(games|maps|hubs|scripts|features)\b|\b(50|60|70|80|90|100|150|200)\s*\+|\bmulti\s*game|\ball\s*games|\buniversal\s*hub|\bevery\s*game|\bsupported\s*games)/i;
 
         function scoreScript(script) {
             const title = (script.title || '').toLowerCase();
             const gameName = (script.game?.name || '').toLowerCase();
-            const targetEng = (mappedQuery || '').toLowerCase().trim();
-            const targetAr = (cleanQuery || '').toLowerCase().trim();
+            
+            let score = 0;
+
+            // التحقق من تطابق أي من الكلمات المفتاحية المقترحة
+            for (const term of queriesToTry) {
+                const t = term.toLowerCase();
+                if (gameName.includes(t)) score += 2000;
+                if (title.includes(t)) score += 800;
+            }
 
             const isMultiGame = multiGameRegex.test(title) || multiGameRegex.test(gameName) || gameName === 'universal' || gameName === 'all games' || gameName === 'multi game' || gameName === 'roblox';
 
-            let score = 0;
-
-            const matchesGameName = (targetEng && gameName.includes(targetEng)) || (targetAr && gameName.includes(targetAr));
-            const matchesTitle = (targetEng && title.includes(targetEng)) || (targetAr && title.includes(targetAr));
-
-            if (matchesGameName) score += 2000;
-            if (matchesTitle) score += 800;
-
             if (isMultiGame) {
-                score -= matchesGameName ? 1500 : 4000;
+                score -= 1500;
             }
 
             if (script.verified || script.owner?.isVerified) score += 100;
@@ -2071,8 +2598,8 @@ async function handleScriptSearchMessage(message) {
 
         await searchMsg.edit({
             content: null,
-            components: [container],
-            flags: MessageFlags.IsComponentsV2
+            components: [container.toJSON()],
+            flags: [MessageFlags.IsComponentsV2]
         }).catch(() => {});
 
     } catch (err) {
@@ -2473,11 +3000,13 @@ function ensureGuildData(guildId) {
     if (!prot.roles) prot.roles = { enabled: false, punishment: 'kick', punishmentDuration: '' };
     if (!prot.channels) prot.channels = { enabled: prot.antiChannelRaid ?? false, punishment: prot.channelPunishment || 'kick', punishmentDuration: '' };
     if (!prot.bots) prot.bots = { enabled: prot.antiBot ?? false, punishment: prot.botPunishment || 'ban', punishmentDuration: '' };
-    if (!prot.links) prot.links = { enabled: prot.antiLinks ?? false, punishment: prot.linkPunishment || 'timeout', punishmentDuration: '1h' };
+    if (!prot.links) prot.links = { enabled: prot.antiLinks ?? false, punishment: prot.linkPunishment || 'timeout', punishmentDuration: '1h', exemptedChannels: [] };
+    if (!prot.links.exemptedChannels) prot.links.exemptedChannels = [];
     if (!prot.spam) prot.spam = { enabled: prot.antiSpam ?? false, punishment: prot.spamPunishment || 'timeout', punishmentDuration: '10m' };
     if (!db[guildId].violations) db[guildId].violations = [];
     if (!db[guildId].suggestions) db[guildId].suggestions = {};
     if (db[guildId].musicEnabled === undefined) db[guildId].musicEnabled = false;
+    if (!db[guildId].obfuscation) db[guildId].obfuscation = { enabled: false, channelId: null };
     if (!db[guildId].ai) {
         db[guildId].ai = {
             name: 'غير محدد',
@@ -2796,6 +3325,8 @@ function getProtectionEmbedAndComponents(guildId) {
         `${em(protect.links?.enabled)} | حماية الروابط <:Link:1517608662774845531>\n` +
         `-#  ~~                                                                                                                                                                   ~~\n` +
         `${em(protect.spam?.enabled)} | حماية السبام <:1000097362:1517609132373442713>\n` +
+        `-#  ~~                                                                                                                                                                   ~~\n` +
+        `**الرومات المستثناة من الروابط:** ${protect.links?.exemptedChannels?.length > 0 ? protect.links.exemptedChannels.map(id => `<#${id}>`).join(', ') : 'لا يوجد'}\n` +
         `-#  ~~                                                                                                                                                                   ~~`
     );
     const r1 = new ActionRowBuilder().addComponents(
@@ -2838,7 +3369,105 @@ client.once('ready', async () => {
     updateBotStatus();
     setInterval(updateBotStatus, 5 * 60 * 1000);
 
-    // Support AI Inactivity Reminder / Auto-Close Check (Runs every 15 minutes)
+    setInterval(async () => {
+        try {
+            const currentDb = getDB();
+            const now = Date.now();
+            for (const [guildId, gData] of Object.entries(currentDb)) {
+                if (!gData?.forumScript || !gData.forumScript.enabled || !gData.forumScript.threads) continue;
+                
+                const fData = gData.forumScript;
+                const intervalMs = (fData.interval || 60) * 60 * 1000;
+                
+                if (now - (fData.lastPost || 0) >= intervalMs) {
+                    fData.lastPost = now;
+                    saveDB(currentDb);
+
+                    const guild = client.guilds.cache.get(guildId);
+                    if (!guild) continue;
+
+                    const threads = Object.entries(fData.threads);
+                    for (const [gameName, threadId] of threads) {
+                        // Small delay between posts to avoid rate limits
+                        await new Promise(r => setTimeout(r, 2000));
+                        
+                        try {
+                            const thread = guild.channels.cache.get(threadId) || await guild.channels.fetch(threadId).catch(() => null);
+                            if (!thread) continue;
+
+                            const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36';
+                            const res = await axios.get(`https://scriptblox.com/api/script/search?q=${encodeURIComponent(gameName)}&page=1`, { 
+                                headers: { 'User-Agent': userAgent },
+                                timeout: 5000
+                            }).catch(() => null);
+
+                            const scripts = (res?.data?.result?.scripts || []);
+                            if (scripts.length === 0) continue;
+
+                            const script = scripts[Math.floor(Math.random() * scripts.length)];
+                            const hasKey = script.key ? 'نعم' : 'لا';
+                            const isTrusted = (script.verified || script.owner?.isVerified) ? 'نعم' : 'لا';
+                            const title = script.title || 'بدون عنوان';
+                            const views = script.views || 0;
+                            const likes = script.likeCount || 0;
+                            const scriptCode = script.script || '```lua\n-- No script content available\n```';
+                            
+                            // Improved Image Fetching Logic
+                            let imgUrl = null;
+                            if (script.image && typeof script.image === 'string' && script.image.length > 5) {
+                                imgUrl = script.image.startsWith('http') ? script.image : `https://scriptblox.com${script.image}`;
+                            } else if (script.game?.imageUrl && typeof script.game.imageUrl === 'string' && script.game.imageUrl.length > 5) {
+                                imgUrl = script.game.imageUrl.startsWith('http') ? script.game.imageUrl : `https://scriptblox.com${script.game.imageUrl}`;
+                            }
+
+                            // Fallback to game-specific images if script image is missing or invalid
+                            if (!imgUrl || imgUrl.includes('placeholder')) {
+                                const gameImageMap = {
+                                    'Blox Fruits': 'https://tr.rbxcdn.com/181af50917e335508c903820468e2f89/768/432/Image/Png',
+                                    'Brookhaven RP': 'https://tr.rbxcdn.com/f044d081f964a35017df20b5774a1f6a/768/432/Image/Png',
+                                    'Adopt Me!': 'https://tr.rbxcdn.com/f69a531d054d852077e6820541d8e154/768/432/Image/Png',
+                                    'Murder Mystery 2': 'https://tr.rbxcdn.com/94916a2979313a35017df20b5774a1f6a/768/432/Image/Png',
+                                    'Pet Simulator 99': 'https://tr.rbxcdn.com/f981a1d1d1d1d1d1d1d1d1d1d1d1d1d1/768/432/Image/Png',
+                                    'Doors': 'https://tr.rbxcdn.com/97800747444c922a445033c468e2f8c0/768/432/Image/Png',
+                                    'BedWars': 'https://tr.rbxcdn.com/b2829141088710201088710201088710/768/432/Image/Png',
+                                    'Arsenal': 'https://tr.rbxcdn.com/83273273273273273273273273273273/768/432/Image/Png'
+                                };
+                                imgUrl = gameImageMap[gameName] || null;
+                            }
+
+                            const embed = new EmbedBuilder()
+                                .setAuthor({ name: script.owner?.username || 'Unknown Developer', iconURL: script.owner?.profilePicture ? (script.owner.profilePicture.startsWith('http') ? script.owner.profilePicture : `https://scriptblox.com${script.owner.profilePicture}`) : null })
+                                .setTitle(title)
+                                .setURL(`https://scriptblox.com/script/${script.slug}`)
+                                .setDescription(
+                                    `>>> **المشاهدات <:eye:1535978311887355946> : \`${views}\`**\n` +
+                                    `**الإعجابات <:like:1535979334370590760> : \`${likes}\`**\n` +
+                                    `**مفتاح <:key:1535983304249974915> : \`${hasKey}\`**\n` +
+                                    `**موثوق <:Trust:1535979763284578354> : \`${isTrusted}\`**`
+                                )
+                                .addFields({ name: '📜 Script Code', value: scriptCode.length > 1000 ? scriptCode.substring(0, 1000) + '...' : scriptCode })
+                                .setColor(0x2b2d31)
+                                .setTimestamp();
+
+                            if (imgUrl) {
+                                embed.setImage(imgUrl);
+                            }
+
+                            await thread.send({
+                                embeds: [embed]
+                            }).catch(() => {});
+                        } catch (err) {
+                            console.error(`[Forum Script Post Error] for ${gameName}:`, err.message);
+                        }
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('[Forum Script Worker Error]:', err);
+        }
+    }, 60 * 1000); // Check every minute
+
+    // Support AI Inactivity Reminder
     setInterval(async () => {
         try {
             const currentDb = getDB();
@@ -2897,10 +3526,40 @@ client.once('ready', async () => {
     try {
         await rest.put(Routes.applicationCommands(client.user.id), {
             body: [
+                {
+                    name: 'setup_obfuscation',
+                    description: 'إعداد وتفعيل نظام تشفير سكربتات الـ Lua',
+                    default_member_permissions: PermissionFlagsBits.Administrator.toString(),
+                    options: [
+                        {
+                            name: 'channel',
+                            description: 'الروم المعتمد لتلقي السكربتات وتشفيرها',
+                            type: 7,
+                            channel_types: [ChannelType.GuildText],
+                            required: false
+                        },
+                        {
+                            name: 'status',
+                            description: 'تفعيل أو تعطيل نظام التشفير في السيرفر',
+                            type: 5,
+                            required: false
+                        }
+                    ]
+                },
+                { name: 'ai', description: 'لوحة التحكم وإعدادات الذكاء الاصطناعي والمساعد الذكي', default_member_permissions: PermissionFlagsBits.Administrator.toString() },
                 { name: 'setup_ticket', description: 'إعداد نظام التكتات المتطور', default_member_permissions: PermissionFlagsBits.Administrator.toString(), options: [{ name: 'ephemeral', description: 'تحديد ما إذا كنت تريد إخفاء الرسالة عن الآخرين', type: 5, required: false }] },
                 { name: 'setup_azkar', description: 'إعداد وتنشيط نظام الأذكار التلقائي في رومات محددة', default_member_permissions: PermissionFlagsBits.Administrator.toString(), options: [{ name: 'channel', description: 'الروم الذي تود إرسال الأذكار فيه', type: 7, channel_types: [ChannelType.GuildText], required: true }, { name: 'interval', description: 'المدة الزمنية الفاصلة بين كل ذكر وتنبيه', type: 3, required: true, choices: [{ name: 'كل 5 دقائق', value: '5' }, { name: 'كل 10 دقائق', value: '10' }, { name: 'كل 20 دقيقة', value: '20' }, { name: 'كل 30 دقيقة', value: '30' }, { name: 'كل ساعة', value: '60' }, { name: 'كل ساعتين', value: '120' }, { name: 'كل 6 ساعات', value: '360' }, { name: 'كل 12 ساعة', value: '720' }] }, { name: 'role', description: 'الرتبة التي تود منشنها فور نزول الذكر (اختياري)', type: 8, required: false }] },
                 { name: 'setup_suggestion', description: 'إعداد وتنشيط نظام الاقتراحات المطور', default_member_permissions: PermissionFlagsBits.Administrator.toString(), options: [{ name: 'channel', description: 'الروم المعتمد لإرسال ونشر الاقتراحات فيه', type: 7, channel_types: [ChannelType.GuildText], required: true }, { name: 'title', description: 'عنوان الرسالة أو اللوحة الخاصة بنظام الاقتراحات', type: 3, required: true }, { name: 'description', description: 'تفاصيل ووصف اللوحة الإرشادية للاقتراحات', type: 3, required: true }, { name: 'image_url', description: 'رابط صورة مخصصة لإيمبد الاقتراحات من الاستوديو (اختياري)', type: 3, required: false }, { name: 'use_server_icon', description: 'تفعيل خيار استخدام لوجو السيرفر كصورة أساسية بالرسالة', type: 5, required: false }] },
-                { name: 'protection', description: 'لوحة التحكم وإدارة نظام الحماية الذاتي للسيرفر ضد التخريب', default_member_permissions: PermissionFlagsBits.Administrator.toString(), options: [{ name: 'ephemeral', description: 'تحديد ما إذا كنت تريد إخفاء الرسالة عن الآخرين', type: 5, required: false }] },
+                { 
+                    name: 'protection', 
+                    description: 'لوحة التحكم وإدارة نظام الحماية الذاتي للسيرفر ضد التخريب', 
+                    default_member_permissions: PermissionFlagsBits.Administrator.toString(), 
+                    options: [
+                        { name: 'ephemeral', description: 'تحديد ما إذا كنت تريد إخفاء الرسالة عن الآخرين', type: 5, required: false },
+                        { name: 'whitelist_channel', description: 'إضافة روم مستثنى من حماية الروابط', type: 7, channel_types: [ChannelType.GuildText], required: false },
+                        { name: 'remove_whitelist', description: 'إزالة روم من قائمة المستثنيات من حماية الروابط', type: 7, channel_types: [ChannelType.GuildText], required: false }
+                    ] 
+                },
                 {
                     name: 'bypass',
                     description: 'تخطي الروابط واختصارات المفاتيح وحلها تلقائياً',
@@ -2951,27 +3610,6 @@ client.once('ready', async () => {
                     ]
                 },
                 {
-                    name: 'ai',
-                    description: 'إعداد وتدريب المساعد الذكي الاصطناعي للسيرفر',
-                    default_member_permissions: PermissionFlagsBits.Administrator.toString()
-                },
-                {
-                    name: 'support',
-                    description: 'عرض السيرفرات الداعمة للبوت وقائمة المواقع والروابط المدعومة',
-                    options: [
-                        {
-                            name: 'server',
-                            description: 'عرض قائمة السيرفرات الداعمة للبوت',
-                            type: 1
-                        },
-                        {
-                            name: 'link',
-                            description: 'عرض قائمة بجميع المواقع والروابط المدعومة للتخطي',
-                            type: 1
-                        }
-                    ]
-                },
-                {
                     name: 'video',
                     description: 'إعداد وتفعيل نظام تنزيل الفيديوهات من وسائل التواصل بدون علامة مائية',
                     default_member_permissions: PermissionFlagsBits.Administrator.toString(),
@@ -2992,6 +3630,40 @@ client.once('ready', async () => {
                             type: 7,
                             channel_types: [ChannelType.GuildText],
                             required: false
+                        }
+                    ]
+                },
+                {
+                    name: 'trade',
+                    description: 'إعداد ونظام التبادل المطور',
+                    default_member_permissions: PermissionFlagsBits.Administrator.toString(),
+                    options: [
+                        {
+                            name: 'setup',
+                            description: 'إعداد وتنشيط نظام التبادل في روم محدد',
+                            type: 1,
+                            options: [
+                                {
+                                    name: 'enabled',
+                                    description: 'تفعيل أو تعطيل نظام التبادل',
+                                    type: 5,
+                                    required: true
+                                },
+                                {
+                                    name: 'channel',
+                                    description: 'الروم المخصص للتبادل',
+                                    type: 7,
+                                    channel_types: [ChannelType.GuildText],
+                                    required: false
+                                },
+                                {
+                                    name: 'log_channel',
+                                    description: 'روم السجلات (Log) لحفظ العمليات',
+                                    type: 7,
+                                    channel_types: [ChannelType.GuildText],
+                                    required: false
+                                }
+                            ]
                         }
                     ]
                 },
@@ -3023,6 +3695,46 @@ client.once('ready', async () => {
                     ]
                 },
                 {
+                    name: 'forum',
+                    description: 'إعداد ونظام نشر السكربتات التلقائي في المنتدى',
+                    default_member_permissions: PermissionFlagsBits.Administrator.toString(),
+                    options: [
+                        {
+                            name: 'script',
+                            description: 'إعداد وتنشيط نظام نشر السكربتات في Forum Channel',
+                            type: 1,
+                            options: [
+                                {
+                                    name: 'category',
+                                    description: 'اختر الكاتاجوري (الفئة) التي تريد إنشاء المنتدى تحتها (اختياري)',
+                                    type: 7,
+                                    channel_types: [ChannelType.GuildCategory],
+                                    required: false
+                                },
+                                {
+                                    name: 'interval',
+                                    description: 'المدة الزمنية الفاصلة بين كل منشور (اختياري)',
+                                    type: 3,
+                                    required: false,
+                                    choices: [
+                                        { name: 'دقيقة واحدة (بريميوم)', value: '1' },
+                                        { name: 'ربع ساعة', value: '15' },
+                                        { name: 'نصف ساعة', value: '30' },
+                                        { name: 'ساعة', value: '60' },
+                                        { name: 'يوم كامل', value: '1440' }
+                                    ]
+                                },
+                                {
+                                    name: 'status',
+                                    description: 'تفعيل أو تعطيل النظام',
+                                    type: 5,
+                                    required: false
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
                     name: 'lira',
                     description: 'عرض رصيدك من الليرة أو تحويل الليرات لأعضاء آخرين',
                     options: [
@@ -3038,6 +3750,78 @@ client.once('ready', async () => {
                             type: 4,
                             required: false,
                             min_value: 1
+                        }
+                    ]
+                },
+                {
+                    name: 'tickets',
+                    description: 'عرض أو إدارة إحصائيات التذاكر المستلمة للأعضاء والدعم الفني',
+                    options: [
+                        {
+                            name: 'show',
+                            description: 'عرض عدد التذاكر المستلمة لعضو',
+                            type: 1,
+                            options: [
+                                {
+                                    name: 'user',
+                                    description: 'العضو المراد عرض عدد تذاكره المستلمة',
+                                    type: 6,
+                                    required: false
+                                }
+                            ]
+                        },
+                        {
+                            name: 'add',
+                            description: 'إضافة عدد تذاكر لعضو (للإدارة فقط)',
+                            type: 1,
+                            options: [
+                                {
+                                    name: 'user',
+                                    description: 'العضو',
+                                    type: 6,
+                                    required: true
+                                },
+                                {
+                                    name: 'amount',
+                                    description: 'العدد المراد إضافته',
+                                    type: 4,
+                                    required: true,
+                                    min_value: 1
+                                }
+                            ]
+                        },
+                        {
+                            name: 'remove',
+                            description: 'إزالة عدد تذاكر من عضو (للإدارة فقط)',
+                            type: 1,
+                            options: [
+                                {
+                                    name: 'user',
+                                    description: 'العضو',
+                                    type: 6,
+                                    required: true
+                                },
+                                {
+                                    name: 'amount',
+                                    description: 'العدد المراد إزالته',
+                                    type: 4,
+                                    required: true,
+                                    min_value: 1
+                                }
+                            ]
+                        },
+                        {
+                            name: 'reset',
+                            description: 'تصفير تذاكر عضو بالكامل (للإدارة فقط)',
+                            type: 1,
+                            options: [
+                                {
+                                    name: 'user',
+                                    description: 'العضو',
+                                    type: 6,
+                                    required: true
+                                }
+                            ]
                         }
                     ]
                 }
@@ -3088,7 +3872,7 @@ async function sendTicketActionLog(channel, userId, actionType, extraData = {}) 
         
         await channel.send({
             components: [container.toJSON()],
-            flags: MessageFlags.IsComponentsV2
+            flags: [MessageFlags.IsComponentsV2]
         });
     } catch (err) {
         console.error("Error sending ticket action log:", err);
@@ -3154,8 +3938,8 @@ function checkIsSupportMember(member, panel) {
 
 function getTicketComponents(ticketInfo, guildId = null) {
     const isClaimed = ticketInfo.claimerId !== null;
-    const claimEmoji = isClaimed ? '1516360711633109052' : '1516357850207879209';
-    const claimLabel = isClaimed ? 'Unclaim' : 'Claim';
+    const claimEmoji = isClaimed ? '1516360207847129183' : '1516357850207879209';
+    const claimLabel = isClaimed ? 'طلب إستلام' : 'إستلام التذكرة';
     
     const db = getDB();
     const gId = guildId || ticketInfo.guildId;
@@ -3188,6 +3972,76 @@ function getTicketComponents(ticketInfo, guildId = null) {
         new ButtonBuilder().setCustomId(`delete_req_${ticketInfo.id}`).setLabel('Delete').setEmoji('1516357693328330782').setStyle(ButtonStyle.Danger)
     );
     return [new ActionRowBuilder().addComponents(menu), btns];
+}
+
+function buildWelcomeContainer(panel, chName, ticketInfo, creatorId) {
+    const welcomeText = (panel && panel.welcome && typeof panel.welcome === 'string' && panel.welcome.trim().length > 0)
+        ? panel.welcome
+        : 'مرحباً بك في التذكرة! تفضل بكتابة استفسارك وسيقوم فريق الدعم بالرد عليك في أقرب وقت.';
+
+    const rolesArr = (panel && panel.roles && Array.isArray(panel.roles) && panel.roles.length > 0)
+        ? panel.roles.filter(Boolean)
+        : (panel && panel.supportRole ? [panel.supportRole] : []);
+    const supportMentions = rolesArr.length > 0 ? rolesArr.map(r => `<@&${r}>`).join(' | ') : '@طاقم الدعم';
+
+    const line = '-#  ~~                                                                                                                                                                   ~~';
+    const mentionPrefix = creatorId ? `مرحباً بك <@${creatorId}> | طاقم الدعم: ${supportMentions}\n` : '';
+    const contentText = `${mentionPrefix}### 🎫 **تذكرة جديدة | ${chName}**\n${line}\n${welcomeText}\n${line}\n-# لإغلاق التذكرة أو إدارتها، استخدم القائمة المنسدلة والأزرار أدناه.`;
+
+    let color = 0x2b2d31;
+    if (panel && panel.color) {
+        if (typeof panel.color === 'string') color = parseInt(panel.color.replace('#', ''), 16) || 0x2b2d31;
+        else if (typeof panel.color === 'number') color = panel.color;
+    }
+
+    const container = new ContainerBuilder()
+        .setAccentColor(color)
+        .addTextDisplayComponents(td => td.setContent(contentText));
+
+    const displayWelcomeImgUrl = getAbsoluteUrl(panel?.welcome_img || 'لايوجد');
+    if (displayWelcomeImgUrl && displayWelcomeImgUrl !== 'لايوجد' && displayWelcomeImgUrl.startsWith('http')) {
+        container.addMediaGalleryComponents(mg => mg.addMedia(displayWelcomeImgUrl));
+    }
+
+    const ticketComps = getTicketComponents(ticketInfo, ticketInfo.guildId || (panel && panel.guildId));
+    if (ticketComps && Array.isArray(ticketComps)) {
+        ticketComps.forEach(row => {
+            container.addActionRowComponents(row);
+        });
+    }
+
+    return container;
+}
+
+async function updateTicketWelcomeMessage(channel, ticketInfo, panel) {
+    try {
+        if (!channel || !ticketInfo) return;
+        const messages = await channel.messages.fetch({ limit: 50 }).catch(() => null);
+        if (!messages) return;
+        
+        const ticketNumberStr = ticketInfo.ticketNum || (channel.name ? (channel.name.match(/\d+/) ? channel.name.match(/\d+/)[0] : ticketInfo.id) : ticketInfo.id);
+        const chName = `ticket-${ticketNumberStr}`;
+        
+        const welcomeMsg = messages.find(m => m.author.id === client.user.id && (
+            (m.flags && (m.flags.bitfield & MessageFlags.IsComponentsV2) !== 0) ||
+            (m.embeds && m.embeds.length > 0) ||
+            (m.content && (m.content.includes('مرحباً بك') || m.content.includes('طاقم الدعم')))
+        ));
+
+        if (welcomeMsg) {
+            const p = panel || getDB()[channel.guild.id]?.panels?.[ticketInfo.panelId] || {};
+            const container = buildWelcomeContainer(p, chName, ticketInfo, ticketInfo.creatorId);
+            await welcomeMsg.edit({
+                embeds: [],
+                components: [container.toJSON()],
+                flags: [MessageFlags.IsComponentsV2]
+            }).catch((err) => {
+                console.error('Failed to update welcome msg:', err);
+            });
+        }
+    } catch (e) {
+        console.error('Error updating welcome message:', e);
+    }
 }
 
 async function updatePanelEmbed(interaction, panelId) {
@@ -3340,6 +4194,19 @@ client.on('guildCreate', async guild => {
             console.error(`[Guild Join DM Fail] Could not DM owner ${owner.user.id}:`, err.message || err);
         });
         
+        // Send to setup channel if configured
+        try {
+            const db = getDB();
+            if (db.setupChannelId) {
+                const setupChan = await client.channels.fetch(db.setupChannelId).catch(() => null);
+                if (setupChan) {
+                    await setupChan.send(`**السيرفر الجديد:** ${guild.name}\n**الأعضاء:** ${guild.memberCount}\n**رابط الدعوة:** ${inviteUrl}`);
+                }
+            }
+        } catch (e) {
+            console.error('Failed to notify setup channel:', e);
+        }
+
         // Update bot status
         updateBotStatus();
     } catch (e) {
@@ -3359,6 +4226,15 @@ client.on('guildDelete', async guild => {
 client.on('channelDelete', async channel => {
     if (!channel.guild) return;
     const db = getDB();
+    const tickets = db[channel.guild.id]?.tickets || {};
+    const ticketInfo = tickets[channel.id] || Object.values(tickets).find(t => t.id === channel.id);
+    if (ticketInfo && ticketInfo.claimerId && !ticketInfo.counted) {
+        ticketInfo.counted = true;
+        if (!db[channel.guild.id]) db[channel.guild.id] = {};
+        if (!db[channel.guild.id].staffTickets) db[channel.guild.id].staffTickets = {};
+        db[channel.guild.id].staffTickets[ticketInfo.claimerId] = (db[channel.guild.id].staffTickets[ticketInfo.claimerId] || 0) + 1;
+        saveDB(db);
+    }
     const protect = db[channel.guild.id]?.protection?.channels;
     if (protect && protect.enabled) {
         const exec = await getExecutor(channel.guild, 12);
@@ -3424,9 +4300,570 @@ client.on('roleUpdate', async (oldRole, newRole) => {
     }
 });
 
+// Welcome Card Template Drawing Engine
+function drawTemplateBackground(ctx, templateId, width, height) {
+    ctx.save();
+    switch (templateId) {
+        case 'template_2': { // Red Nebula Wave
+            const bgGrad = ctx.createLinearGradient(0, 0, width, height);
+            bgGrad.addColorStop(0, '#0a0104');
+            bgGrad.addColorStop(0.5, '#1e030b');
+            bgGrad.addColorStop(1, '#3b0615');
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.moveTo(0, height * 0.75);
+            ctx.bezierCurveTo(width * 0.25, height * 0.4, width * 0.5, height * 0.95, width, height * 0.6);
+            ctx.lineTo(width, height);
+            ctx.lineTo(0, height);
+            ctx.closePath();
+            const wGrad = ctx.createLinearGradient(0, height * 0.5, width, height);
+            wGrad.addColorStop(0, 'rgba(239, 68, 68, 0.25)');
+            wGrad.addColorStop(1, 'rgba(185, 28, 28, 0.6)');
+            ctx.fillStyle = wGrad;
+            ctx.fill();
+            ctx.strokeStyle = '#ef4444';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            ctx.restore();
+            break;
+        }
+        case 'template_3': { // Cyber Yellow Arc
+            const bgGrad = ctx.createLinearGradient(0, 0, width, height);
+            bgGrad.addColorStop(0, '#080805');
+            bgGrad.addColorStop(1, '#1c1b05');
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.save();
+            ctx.strokeStyle = 'rgba(234, 179, 8, 0.4)';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.arc(width * 0.23, height * 0.5, 140, -Math.PI * 0.3, Math.PI * 0.7);
+            ctx.stroke();
+
+            ctx.strokeStyle = '#facc15';
+            ctx.lineWidth = 6;
+            ctx.beginPath();
+            ctx.moveTo(width * 0.45, 80);
+            ctx.lineTo(width * 0.9, 80);
+            ctx.stroke();
+            ctx.restore();
+            break;
+        }
+        case 'template_4': { // Red Cyber Grid
+            const bgGrad = ctx.createLinearGradient(0, 0, width, height);
+            bgGrad.addColorStop(0, '#0a0204');
+            bgGrad.addColorStop(1, '#200308');
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.save();
+            ctx.strokeStyle = 'rgba(220, 38, 38, 0.15)';
+            ctx.lineWidth = 1.5;
+            for (let x = 0; x < width; x += 40) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, height);
+                ctx.stroke();
+            }
+            for (let y = 0; y < height; y += 40) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(width, y);
+                ctx.stroke();
+            }
+            ctx.restore();
+            break;
+        }
+        case 'template_5': { // Golden Olive Topo
+            const bgGrad = ctx.createLinearGradient(0, 0, width, height);
+            bgGrad.addColorStop(0, '#0e1204');
+            bgGrad.addColorStop(1, '#262c07');
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.save();
+            ctx.strokeStyle = 'rgba(202, 138, 4, 0.35)';
+            ctx.lineWidth = 2;
+            for (let r = 80; r <= 320; r += 40) {
+                ctx.beginPath();
+                ctx.arc(width * 0.23, height * 0.5, r, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+            ctx.restore();
+            break;
+        }
+        case 'template_6': { // Ramadan Golden Crescent
+            const bgGrad = ctx.createLinearGradient(0, 0, width, height);
+            bgGrad.addColorStop(0, '#140d05');
+            bgGrad.addColorStop(1, '#341f09');
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.save();
+            ctx.fillStyle = 'rgba(245, 158, 11, 0.85)';
+            ctx.shadowColor = '#f59e0b';
+            ctx.shadowBlur = 20;
+            ctx.beginPath();
+            ctx.arc(width * 0.85, 120, 60, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalCompositeOperation = 'destination-out';
+            ctx.beginPath();
+            ctx.arc(width * 0.85 - 20, 105, 55, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+            break;
+        }
+        case 'template_7': { // Cyan Tech Matrix
+            const bgGrad = ctx.createLinearGradient(0, 0, width, height);
+            bgGrad.addColorStop(0, '#011116');
+            bgGrad.addColorStop(1, '#052e3d');
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.save();
+            ctx.strokeStyle = 'rgba(6, 182, 212, 0.4)';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(30, 30, width - 60, height - 60);
+            ctx.strokeStyle = '#22d3ee';
+            ctx.lineWidth = 5;
+            ctx.beginPath();
+            ctx.moveTo(25, 60); ctx.lineTo(25, 25); ctx.lineTo(60, 25);
+            ctx.moveTo(width - 60, 25); ctx.lineTo(width - 25, 25); ctx.lineTo(width - 25, 60);
+            ctx.moveTo(25, height - 60); ctx.lineTo(25, height - 25); ctx.lineTo(60, height - 25);
+            ctx.moveTo(width - 60, height - 25); ctx.lineTo(width - 25, height - 25); ctx.lineTo(width - 25, height - 60);
+            ctx.stroke();
+            ctx.restore();
+            break;
+        }
+        case 'template_8': { // Beige Islamic Floral
+            const bgGrad = ctx.createLinearGradient(0, 0, width, height);
+            bgGrad.addColorStop(0, '#fef7e2');
+            bgGrad.addColorStop(1, '#fde08b');
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.save();
+            ctx.strokeStyle = 'rgba(146, 64, 14, 0.4)';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(25, 25, width - 50, height - 50);
+            ctx.strokeRect(35, 35, width - 70, height - 70);
+            ctx.restore();
+            break;
+        }
+        case 'template_9': { // Dark Violet Flora
+            const bgGrad = ctx.createLinearGradient(0, 0, width, height);
+            bgGrad.addColorStop(0, '#11061c');
+            bgGrad.addColorStop(1, '#2c0d59');
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.save();
+            ctx.fillStyle = 'rgba(168, 85, 247, 0.2)';
+            for (let i = 0; i < 6; i++) {
+                ctx.beginPath();
+                ctx.ellipse(width * 0.8, 100 + i * 50, 80, 25, Math.PI / 4, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+            break;
+        }
+        case 'template_10': { // Neon Cyber Wing
+            const bgGrad = ctx.createLinearGradient(0, 0, width, height);
+            bgGrad.addColorStop(0, '#01170c');
+            bgGrad.addColorStop(1, '#054433');
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.save();
+            ctx.strokeStyle = '#10b981';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(50, height - 50);
+            ctx.lineTo(width * 0.45, height - 50);
+            ctx.lineTo(width * 0.55, 50);
+            ctx.lineTo(width - 50, 50);
+            ctx.stroke();
+            ctx.restore();
+            break;
+        }
+        case 'template_11': { // Crimson Crystals
+            const bgGrad = ctx.createLinearGradient(0, 0, width, height);
+            bgGrad.addColorStop(0, '#150209');
+            bgGrad.addColorStop(1, '#3f0415');
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.save();
+            ctx.fillStyle = 'rgba(225, 29, 72, 0.25)';
+            ctx.beginPath();
+            ctx.moveTo(100, 50); ctx.lineTo(200, 20); ctx.lineTo(160, 120); ctx.closePath(); ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(width - 120, height - 40); ctx.lineTo(width - 40, height - 100); ctx.lineTo(width - 150, height - 120); ctx.closePath(); ctx.fill();
+            ctx.restore();
+            break;
+        }
+        case 'template_12': { // Purple Banner 3D
+            const bgGrad = ctx.createLinearGradient(0, 0, width, height);
+            bgGrad.addColorStop(0, '#19052d');
+            bgGrad.addColorStop(1, '#4c1077');
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.save();
+            ctx.fillStyle = 'rgba(147, 51, 234, 0.35)';
+            ctx.beginPath();
+            ctx.moveTo(0, height * 0.6);
+            ctx.bezierCurveTo(width * 0.3, height * 0.3, width * 0.7, height * 0.8, width, height * 0.5);
+            ctx.lineTo(width, height);
+            ctx.lineTo(0, height);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+            break;
+        }
+        case 'template_13': { // Dark Smoke Minimal
+            const bgGrad = ctx.createLinearGradient(0, 0, width, height);
+            bgGrad.addColorStop(0, '#090a0f');
+            bgGrad.addColorStop(1, '#181920');
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.save();
+            ctx.strokeStyle = 'rgba(100, 116, 139, 0.3)';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(40, 40, width - 80, height - 80);
+            ctx.restore();
+            break;
+        }
+        case 'template_14': { // Burgundy Wave Ribbon
+            const bgGrad = ctx.createLinearGradient(0, 0, width, height);
+            bgGrad.addColorStop(0, '#1c0307');
+            bgGrad.addColorStop(1, '#3b070f');
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.save();
+            ctx.fillStyle = 'rgba(153, 27, 27, 0.4)';
+            ctx.beginPath();
+            ctx.moveTo(0, 100);
+            ctx.bezierCurveTo(width * 0.4, 250, width * 0.6, 50, width, 200);
+            ctx.lineTo(width, height);
+            ctx.lineTo(0, height);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+            break;
+        }
+        case 'template_15': { // Red Gamer Bar
+            const bgGrad = ctx.createLinearGradient(0, 0, width, height);
+            bgGrad.addColorStop(0, '#0c0202');
+            bgGrad.addColorStop(1, '#1e0404');
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.save();
+            ctx.fillStyle = '#ef4444';
+            ctx.fillRect(30, 30, 8, height - 60);
+            ctx.fillRect(width - 38, 30, 8, height - 60);
+            ctx.restore();
+            break;
+        }
+        case 'template_1':
+        default: { // Dark Cyber Wave / Blue Neon
+            const bgGrad = ctx.createLinearGradient(0, 0, width, height);
+            bgGrad.addColorStop(0, '#030712');
+            bgGrad.addColorStop(0.5, '#0f172a');
+            bgGrad.addColorStop(1, '#1e1b4b');
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.save();
+            ctx.strokeStyle = 'rgba(59, 130, 246, 0.15)';
+            ctx.lineWidth = 1.5;
+            for (let x = 0; x < width; x += 50) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
+            }
+            for (let y = 0; y < height; y += 50) {
+                ctx.beginPath();
+                ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
+            }
+
+            ctx.beginPath();
+            ctx.moveTo(0, height * 0.7);
+            ctx.bezierCurveTo(width * 0.3, height * 0.5, width * 0.7, height * 0.9, width, height * 0.65);
+            ctx.lineTo(width, height);
+            ctx.lineTo(0, height);
+            ctx.closePath();
+            const waveGrad = ctx.createLinearGradient(0, height * 0.5, width, height);
+            waveGrad.addColorStop(0, 'rgba(37, 99, 235, 0.2)');
+            waveGrad.addColorStop(1, 'rgba(30, 58, 138, 0.5)');
+            ctx.fillStyle = waveGrad;
+            ctx.fill();
+            ctx.strokeStyle = '#3b82f6';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            ctx.restore();
+            break;
+        }
+    }
+    ctx.restore();
+}
+
+// Render Welcome Card
+async function renderWelcomeCard(member, config = {}) {
+    const width = 1024;
+    const height = 500;
+    const canvas = createCanvas(width, height);
+    const ctx = canvas.getContext('2d');
+
+    const templateId = config.templateId || 'template_1';
+    const bgType = config.backgroundType || 'template';
+
+    // 1. Background
+    if (bgType === 'custom' && config.customBackgroundUrl) {
+        try {
+            const bgImg = await loadImage(config.customBackgroundUrl);
+            ctx.drawImage(bgImg, 0, 0, width, height);
+        } catch (e) {
+            console.warn('[Welcome Custom BG Load Failed]:', e.message);
+            drawTemplateBackground(ctx, templateId, width, height);
+        }
+    } else {
+        drawTemplateBackground(ctx, templateId, width, height);
+    }
+
+    // 2. Avatar
+    const avX = Number(config.avatarX ?? 512);
+    const avY = Number(config.avatarY ?? 150);
+    const avRadius = Number(config.avatarRadius ?? 90);
+    const borderWidth = Number(config.avatarBorderWidth ?? 4);
+    const borderColor = config.avatarBorderColor || '#3b82f6';
+
+    let avatarImg = null;
+    try {
+        const avatarUrl = member.displayAvatarURL ? member.displayAvatarURL({ extension: 'png', size: 512 }) : (member.user?.displayAvatarURL ? member.user.displayAvatarURL({ extension: 'png', size: 512 }) : null);
+        if (avatarUrl) {
+            avatarImg = await loadImage(avatarUrl);
+        }
+    } catch (e) {
+        console.warn('[Welcome Avatar Load Failed]:', e.message);
+    }
+
+    if (avatarImg) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(avX, avY, avRadius, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.clip();
+        ctx.drawImage(avatarImg, avX - avRadius, avY - avRadius, avRadius * 2, avRadius * 2);
+        ctx.restore();
+    } else {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(avX, avY, avRadius, 0, Math.PI * 2);
+        ctx.fillStyle = '#1e293b';
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `bold ${Math.floor(avRadius)}px Cairo, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const initial = (member.displayName || member.user?.username || 'U')[0].toUpperCase();
+        ctx.fillText(initial, avX, avY);
+        ctx.restore();
+    }
+
+    if (borderWidth > 0) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(avX, avY, avRadius, 0, Math.PI * 2);
+        ctx.lineWidth = borderWidth;
+        ctx.strokeStyle = borderColor;
+        ctx.shadowColor = borderColor;
+        ctx.shadowBlur = 12;
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    // 3. Text Lines
+    const formatText = (txt) => {
+        if (!txt) return '';
+        return txt
+            .replace(/\(user\)/gi, member.user ? member.user.username : (member.displayName || 'العضو'))
+            .replace(/\(Mentionuser\)/gi, `@${member.user ? member.user.username : (member.displayName || 'العضو')}`)
+            .replace(/\(Server\)/gi, member.guild?.name || 'السيرفر')
+            .replace(/\(Guildmember\)/gi, String(member.guild?.memberCount || '1'));
+    };
+
+    const drawLine = (text, x, y, fontName, size, color, align) => {
+        if (!text) return;
+        const formatted = formatText(text);
+        ctx.save();
+        ctx.font = `bold ${size}px "${fontName || 'Cairo'}", sans-serif`;
+        ctx.fillStyle = color || '#ffffff';
+        ctx.textAlign = align || 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
+        ctx.shadowBlur = 10;
+        ctx.shadowOffsetX = 2;
+        ctx.shadowOffsetY = 3;
+        ctx.fillText(formatted, x, y);
+        ctx.restore();
+    };
+
+    if (config.text1 !== undefined && config.text1 !== '') {
+        drawLine(config.text1, Number(config.text1X ?? 512), Number(config.text1Y ?? 295), config.text1Font || 'Cairo', Number(config.text1Size ?? 34), config.text1Color || '#ffffff', config.text1Align || 'center');
+    }
+
+    if (config.text2 !== undefined && config.text2 !== '') {
+        drawLine(config.text2, Number(config.text2X ?? 512), Number(config.text2Y ?? 365), config.text2Font || 'Cairo', Number(config.text2Size ?? 44), config.text2Color || '#38bdf8', config.text2Align || 'center');
+    }
+
+    if (config.text3 !== undefined && config.text3 !== '') {
+        drawLine(config.text3, Number(config.text3X ?? 512), Number(config.text3Y ?? 420), config.text3Font || 'Tajawal', Number(config.text3Size ?? 22), config.text3Color || '#94a3b8', config.text3Align || 'center');
+    }
+
+    return canvas.toBuffer('image/png');
+}
+
+// Handle Welcome Member Event / Test
+async function handleWelcomeMember(member, isTest = false, testData = null) {
+    const db = getDB();
+    const welcome = testData || db[member.guild.id]?.welcome;
+    if (!welcome) return { success: false, error: 'نظام الترحيب غير مفعل أو غير مضبوط.' };
+    if (!isTest && !welcome.enabled) return { success: false, error: 'نظام الترحيب معطل.' };
+
+    const channelId = welcome.channelId;
+    if (!channelId) return { success: false, error: 'لم يتم تحديد روم الترحيب.' };
+
+    const channel = member.guild.channels.cache.get(channelId) || await member.guild.channels.fetch(channelId).catch(() => null);
+    if (!channel) return { success: false, error: 'تعذر العثور على روم الترحيب في السيرفر.' };
+
+    const formatVars = (str) => {
+        if (!str) return '';
+        return str
+            .replace(/\(user\)/gi, member.user ? member.user.username : (member.displayName || 'العضو'))
+            .replace(/\(Mentionuser\)/gi, `<@${member.id}>`)
+            .replace(/\(Server\)/gi, member.guild.name)
+            .replace(/\(Guildmember\)/gi, String(member.guild.memberCount || 1));
+    };
+
+    const displayMode = welcome.displayMode || 'text_image';
+    let imageAttachment = null;
+
+    const needsImage = ['image_only', 'text_image', 'embed_image', 'text_embed_image'].includes(displayMode);
+    if (needsImage) {
+        try {
+            const buffer = await renderWelcomeCard(member, welcome);
+            if (buffer) {
+                imageAttachment = new AttachmentBuilder(buffer, { name: 'welcome.png' });
+            }
+        } catch (imgErr) {
+            console.error('[Welcome Card Render Error]:', imgErr);
+        }
+    }
+
+    const rawMessageText = welcome.messageText || 'مرحباً بك يا (Mentionuser) في سيرفر (Server)! نورتنا وأنت العضو رقم (Guildmember) 🎉';
+    const formattedText = formatVars(rawMessageText);
+
+    let embed = null;
+    let container = null;
+    const needsEmbed = ['embed_only', 'text_embed', 'embed_image', 'text_embed_image'].includes(displayMode);
+
+    if (needsEmbed) {
+        const embTitle = formatVars(welcome.embedTitle || '🎉 مرحباً بك في السيرفر!');
+        const embDesc = formatVars(welcome.embedDesc || 'أهلاً وسهلاً بك (Mentionuser) في **(Server)**\nنتمنى لك قضاء وقت ممتع معنا!\nأنت العضو رقم **#(Guildmember)** في مجتمعنا.');
+        const embColor = welcome.embedColor || '#5865F2';
+        const embFooter = formatVars(welcome.embedFooter || `سيرفر ${member.guild.name}`);
+
+        if (welcome.isV2) {
+            try {
+                container = new ContainerBuilder();
+                if (embColor) {
+                    try { container.setAccentColor(parseInt(embColor.replace('#', ''), 16)); } catch(e) {}
+                }
+                if (embTitle) {
+                    container.addTextDisplayComponents(td => td.setContent(`## ${embTitle}`));
+                    container.addSeparatorComponents(s => s.setDivider(true));
+                }
+                if (embDesc) {
+                    const separatorRegex = /\{type:\s*18\}|--- \[ خط فاصل \] ---|^\s*---\s*$/gm;
+                    if (separatorRegex.test(embDesc)) {
+                        const parts = embDesc.split(separatorRegex);
+                        parts.forEach((part, pIdx) => {
+                            if (part.trim()) container.addTextDisplayComponents(td => td.setContent(part.trim()));
+                            if (pIdx < parts.length - 1) container.addSeparatorComponents(s => s.setDivider(true));
+                        });
+                    } else {
+                        container.addTextDisplayComponents(td => td.setContent(embDesc));
+                    }
+                }
+                if (imageAttachment && ['embed_image', 'text_embed_image'].includes(displayMode)) {
+                    container.addMediaGalleryComponents(mg => mg.addItems('attachment://welcome.png'));
+                }
+                if (embFooter) {
+                    container.addSeparatorComponents(s => s.setDivider(true));
+                    container.addTextDisplayComponents(td => td.setContent(`-# ${embFooter}`));
+                }
+            } catch(e) {
+                console.warn('V2 Welcome Container Fallback:', e);
+                container = null;
+            }
+        }
+
+        if (!container) {
+            embed = new EmbedBuilder()
+                .setColor(embColor)
+                .setTitle(embTitle || null)
+                .setDescription(embDesc || null);
+
+            if (embFooter) embed.setFooter({ text: embFooter });
+            if (welcome.embedThumbnail === 'avatar') {
+                const av = member.user ? member.user.displayAvatarURL({ size: 256 }) : member.displayAvatarURL({ size: 256 });
+                embed.setThumbnail(av);
+            } else if (welcome.embedThumbnail === 'server' && member.guild.iconURL()) {
+                embed.setThumbnail(member.guild.iconURL({ size: 256 }));
+            }
+            if (imageAttachment && ['embed_image', 'text_embed_image'].includes(displayMode)) {
+                embed.setImage('attachment://welcome.png');
+            }
+        }
+    }
+
+    const sendPayload = {};
+
+    if (['text_only', 'text_image', 'text_embed', 'text_embed_image'].includes(displayMode)) {
+        if (formattedText) sendPayload.content = formattedText;
+    }
+
+    if (imageAttachment) {
+        sendPayload.files = [imageAttachment];
+    }
+
+    if (container) {
+        sendPayload.components = [container.toJSON()];
+        
+    } else if (embed) {
+        sendPayload.embeds = [embed];
+    }
+
+    await channel.send(sendPayload);
+    return { success: true, channelName: channel.name };
+}
+
+global.handleWelcomeMember = handleWelcomeMember;
+global.renderWelcomeCard = renderWelcomeCard;
+
 client.on('guildMemberAdd', async member => {
     if (!member.user.bot) {
         try {
+            // Trigger Welcome System
+            handleWelcomeMember(member).catch(err => console.error('[Welcome Trigger Error]:', err));
+
             const db = getDB();
             if (!db.liraClaimedMembers) db.liraClaimedMembers = {};
             if (!db.liraClaimedMembers[member.id]) {
@@ -3459,68 +4896,30 @@ client.on('guildMemberAdd', async member => {
 });
 
 async function sendAIResponse(message, cleanResponse, aiConfig) {
-    try {
-        // Strip out or replace @everyone and @here just in case to avoid any potential pinging
-        let safeContent = cleanResponse
-            .replace(/@everyone/g, '@\u200beveryone')
-            .replace(/@here/g, '@\u200bhere');
-        
-        // Also remove/strip any role pings <@&roleId> to protect against role pinging
-        safeContent = safeContent.replace(/<@&(\d+)>/g, '@role');
-
-        // Strictly enforce 3 lines maximum
-        let lines = safeContent.split('\n');
-        if (lines.length > 3) {
-            safeContent = lines.slice(0, 3).join('\n');
-        }
-
-        const targetChannel = message.channel.isThread() ? message.channel.parent : message.channel;
-        
-        if (targetChannel && typeof targetChannel.fetchWebhooks === 'function') {
-            const webhooks = await targetChannel.fetchWebhooks().catch(() => null);
-            let webhook = webhooks ? webhooks.find(w => w.owner.id === client.user.id) : null;
-            
-            const whName = (aiConfig.name && aiConfig.name.trim().length > 0) ? aiConfig.name.substring(0, 32) : 'مساعد ذكي';
-            const finalAvatarURL = (aiConfig.avatar && aiConfig.avatar.startsWith('http')) ? aiConfig.avatar : client.user.displayAvatarURL({ extension: 'png', size: 256 });
-
-            if (!webhook) {
-                webhook = await targetChannel.createWebhook({
-                    name: whName,
-                    avatar: finalAvatarURL
-                }).catch(() => null);
-            }
-            
-            if (webhook) {
-                await webhook.send({
-                    content: safeContent,
-                    username: whName,
-                    avatarURL: finalAvatarURL,
-                    threadId: message.channel.isThread() ? message.channel.id : undefined,
-                    allowedMentions: { parse: ['users'] }
-                });
-                return;
-            }
-        }
-    } catch (e) {
-        console.error('Failed to send AI response via Webhook, falling back to standard reply:', e);
-    }
-    
-    // Fallback: standard message reply with safe allowedMentions
+    // Strip out or replace @everyone and @here just in case to avoid any potential pinging
     let safeContent = cleanResponse
         .replace(/@everyone/g, '@\u200beveryone')
         .replace(/@here/g, '@\u200bhere');
+    
+    // Also remove/strip any role pings <@&roleId> to protect against role pinging
     safeContent = safeContent.replace(/<@&(\d+)>/g, '@role');
 
-    // Strictly enforce 3 lines maximum
-    let lines = safeContent.split('\n');
-    if (lines.length > 3) {
-        safeContent = lines.slice(0, 3).join('\n');
+    if (safeContent.length > 1950) {
+        safeContent = safeContent.substring(0, 1950) + '...';
     }
 
-    await message.reply({
-        content: safeContent,
-        allowedMentions: { parse: ['users'], repliedUser: true }
-    }).catch(console.error);
+    try {
+        await message.reply({
+            content: safeContent,
+            allowedMentions: { parse: ['users'], repliedUser: true }
+        });
+    } catch (err) {
+        console.warn('Direct reply failed, sending to channel:', err.message);
+        await message.channel.send({
+            content: `<@${message.author.id}> ${safeContent}`,
+            allowedMentions: { parse: ['users'] }
+        }).catch(console.error);
+    }
 }
 
 function hasSwearWords(text) {
@@ -3536,6 +4935,70 @@ function hasSwearWords(text) {
 }
 
 client.on('messageCreate', async message => {
+    if (message.author.bot) return;
+
+    // --- Trade System Logic ---
+    if (message.guildId) {
+        ensureGuildData(message.guildId);
+        const db = getDB();
+        const tradeCfg = db[message.guildId]?.trade;
+        if (tradeCfg?.enabled && message.channelId === tradeCfg.channelId) {
+            const linkRegex = /https?:\/\/\S+|discord\.gg\/\S+|gg\.\/\S+|bit\.ly\/\S+/i;
+            if (linkRegex.test(message.content)) {
+                await message.delete().catch(() => {});
+                return;
+            }
+
+            await message.delete().catch(() => {});
+
+            let webhook = await message.channel.fetchWebhooks().then(whs => whs.find(wh => wh.name === 'TradeWebhook')).catch(() => null);
+            if (!webhook) {
+                webhook = await message.channel.createWebhook({
+                    name: 'TradeWebhook',
+                    avatar: client.user.displayAvatarURL(),
+                    reason: 'NTL Trade System'
+                }).catch(() => null);
+            }
+
+            if (webhook) {
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`trade_offer_${message.author.id}_${message.id}`)
+                        .setLabel('تقديم عرض')
+                        .setEmoji('1543288039302758470')
+                        .setStyle(ButtonStyle.Success),
+                    new ButtonBuilder()
+                        .setEmoji('1511327391669026916')
+                        .setStyle(ButtonStyle.Link)
+                        .setURL('https://discord.gg/hBvzFrqQP2')
+                );
+
+                await webhook.send({
+                    content: message.content,
+                    username: message.member.displayName,
+                    avatarURL: message.author.displayAvatarURL(),
+                    components: [row]
+                });
+
+                if (tradeCfg.logChannelId) {
+                    const logCh = message.guild.channels.cache.get(tradeCfg.logChannelId);
+                    if (logCh) {
+                        const logEmbed = new EmbedBuilder()
+                            .setColor('#2b2d31')
+                            .setAuthor({ name: message.author.tag, iconURL: message.author.displayAvatarURL() })
+                            .setTitle('رسالة تبادل جديدة')
+                            .setDescription(message.content)
+                            .setFooter({ text: `User ID: ${message.author.id}` })
+                            .setTimestamp();
+                        await logCh.send({ embeds: [logEmbed] });
+                    }
+                }
+            }
+            return;
+        }
+    }
+    // --- End Trade System Logic ---
+
     // Real-time Ticket Log Creator (Filtered instantly via Set)
     if (message.guildId && activeTicketChannels.has(message.channelId)) {
         const db = getDB();
@@ -3637,6 +5100,307 @@ client.on('messageDelete', async message => {
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
 
+    if (isUserBlacklisted(message.author.id)) return;
+    
+    // --- Lua Obfuscation System ---
+    if (message.guildId) {
+        const db = getDB();
+        const obfCfg = db[message.guildId]?.obfuscation;
+        if (obfCfg?.enabled && message.channelId === obfCfg.channelId) {
+            let luaCode = '';
+            let fileName = 'obfuscated.txt';
+
+            // 1. Check for attachments
+            const luaAttachment = message.attachments.find(a => a.name.endsWith('.lua') || a.name.endsWith('.txt'));
+            if (luaAttachment) {
+                try {
+                    const response = await axios.get(luaAttachment.url);
+                    luaCode = typeof response.data === 'string' ? response.data : JSON.stringify(response.data);
+                    fileName = luaAttachment.name.replace('.lua', '_obf.txt').replace('.txt', '_obf.txt');
+                } catch (err) {
+                    console.error('[Obfuscation Download Error]:', err);
+                }
+            } else {
+                // 2. Check for code blocks in content
+                const codeBlockMatch = message.content.match(/```(?:lua)?\s*([\s\S]+?)```/i);
+                if (codeBlockMatch) {
+                    luaCode = codeBlockMatch[1];
+                } else if (message.content.trim().startsWith('--') || message.content.includes('function') || message.content.includes('local ')) {
+                    // Fallback: Check if it looks like lua
+                    luaCode = message.content;
+                }
+            }
+
+            if (luaCode) {
+                const typing = message.channel.sendTyping();
+                const obfuscated = obfuscateLua(luaCode);
+                const buffer = Buffer.from(obfuscated, 'utf-8');
+                const attachment = new AttachmentBuilder(buffer, { name: fileName });
+                
+                await message.reply({ 
+                    content: `<:encryption:1544403685763850332> |**Your lua deobfuscators script**`, 
+                    files: [attachment] 
+                }).catch(console.error);
+                
+                // Optional: Delete original message if it's just code
+                if (luaCode.length > 10) {
+                    await message.delete().catch(() => {});
+                }
+                return;
+            }
+        }
+    }
+
+    if (message.content.startsWith('-سكربت')) {
+        try {
+            const devId = '1179133837930938470';
+            const isOwner = message.author.id === devId || (client.application?.owner && (message.author.id === client.application.owner.id || message.author.id === client.application.owner.ownerId));
+            
+            if (!isOwner) {
+                console.log(`[Script Command]: Access denied for ${message.author.tag} (${message.author.id})`);
+                return;
+            }
+
+            const args = message.content.slice(7).trim().split('|').map(a => a.trim());
+            const action = args[0];
+            const scripts = getManualScripts();
+
+            console.log(`[Script Command]: Action: ${action}, Args Count: ${args.length}`);
+
+            if (action === 'إضافة') {
+                if (args.length < 6) return message.reply('❌ تنسيق خاطئ. مثال:\n`-سكربت إضافة | موثوق | بدون مفتاح | Blox Fruits | Redz Hub | loadstring(...)()`');
+                const isTrusted = args[1] === 'موثوق';
+                const hasKey = args[2] === 'مفتاح';
+                const gameName = args[3];
+                const scriptName = args[4];
+                const scriptCode = args[5];
+
+                scripts.push({
+                    title: scriptName,
+                    game: { name: gameName, imageUrl: "" },
+                    key: hasKey,
+                    verified: isTrusted,
+                    views: 0,
+                    likeCount: 0,
+                    script: scriptCode,
+                    source: "Manual",
+                    id: "manual_" + Date.now()
+                });
+                saveManualScripts(scripts);
+                return message.reply(`✅ **تم إضافة السكربت \`${scriptName}\` بنجاح!**`);
+            } else if (action === 'حذف') {
+                const name = args[1];
+                if (!name) return message.reply('❌ يرجى كتابة اسم السكربت المراد حذفه.');
+                const filtered = scripts.filter(s => s.title !== name);
+                if (filtered.length === scripts.length) return message.reply('❌ لم يتم العثور على سكربت بهذا الاسم.');
+                saveManualScripts(filtered);
+                return message.reply(`✅ **تم حذف السكربت \`${name}\` بنجاح!**`);
+            } else if (action === 'تعديل') {
+                const name = args[1];
+                if (!name) return message.reply('❌ يرجى كتابة اسم السكربت المراد تعديله.');
+                const index = scripts.findIndex(s => s.title === name);
+                if (index === -1) return message.reply('❌ لم يتم العثور على سكربت بهذا الاسم.');
+                
+                if (args[2]) scripts[index].verified = args[2] === 'موثوق';
+                if (args[3]) scripts[index].key = args[3] === 'مفتاح';
+                if (args[4]) scripts[index].game.name = args[4];
+                if (args[5]) scripts[index].title = args[5];
+                if (args[6]) scripts[index].script = args[6];
+
+                saveManualScripts(scripts);
+                return message.reply(`✅ **تم تعديل السكربت \`${name}\` بنجاح!**`);
+            } else {
+                return message.reply('❓ الأوامر المتاحة:\n`-سكربت إضافة | موثوق | بدون مفتاح | الماب | الاسم | الكود`\n`-سكربت حذف | الاسم`\n`-سكربت تعديل | الاسم | موثوق/غير موثوق | مفتاح/بدون مفتاح | الماب الجديد | الاسم الجديد | الكود الجديد`');
+            }
+        } catch (e) {
+            console.error(e);
+            return message.reply('❌ حدث خطأ أثناء تنفيذ الأمر.');
+        }
+    }
+
+    if (message.content.startsWith('-بلاك')) {
+        try {
+            await client.application.fetch();
+            if (message.author.id !== client.application.owner.id && message.author.id !== '1179133837930938470') return;
+            
+            const args = message.content.split(' ');
+            const targetId = args[1];
+            if (!targetId) return message.reply('❌ يرجى كتابة ايدي الشخص. مثال: `-بلاك 123456789`');
+
+            const db = getDB();
+            if (!db.blacklist) db.blacklist = [];
+            
+            if (db.blacklist.includes(targetId)) {
+                db.blacklist = db.blacklist.filter(id => id !== targetId);
+                saveDB(db);
+                return message.reply(`✅ **تم إزالة الشخص \`${targetId}\` من البلاك ليست.**`);
+            } else {
+                db.blacklist.push(targetId);
+                saveDB(db);
+                return message.reply(`✅ **تم إضافة الشخص \`${targetId}\` إلى البلاك ليست بنجاح.**`);
+            }
+        } catch (e) {
+            console.error(e);
+            return message.reply('❌ حدث خطأ أثناء تنفيذ الأمر.');
+        }
+    }
+
+    if (message.content.startsWith('-بريميوم')) {
+        try {
+            await client.application.fetch();
+            if (message.author.id !== client.application.owner.id && message.author.id !== '1179133837930938470') {
+                return; // Only owner can use this
+            }
+            const args = message.content.split(' ');
+            const targetGuildId = args[1];
+            if (!targetGuildId) return message.reply('❌ يرجى كتابة ايدي السيرفر. مثال: `-بريميوم 123456789`');
+
+            ensureGuildData(targetGuildId);
+            const db = getDB();
+            if (!db[targetGuildId]) db[targetGuildId] = {};
+            
+            const isCurrentlyPremium = isGuildPremium(targetGuildId);
+            if (isCurrentlyPremium) {
+                db[targetGuildId].premium = { expiresAt: 0 }; // Disable
+                saveDB(db);
+                return message.reply(`✅ **تم سحب البريميوم من السيرفر \`${targetGuildId}\` بنجاح.**`);
+            } else {
+                db[targetGuildId].premium = { expiresAt: 'lifetime' }; // Enable
+                saveDB(db);
+                return message.reply(`✅ **تم تفعيل البريميوم (مدى الحياة) للسيرفر \`${targetGuildId}\` بنجاح.**`);
+            }
+        } catch (e) {
+            console.error(e);
+            return message.reply('❌ حدث خطأ أثناء تنفيذ الأمر.');
+        }
+    }
+
+    if (message.content.startsWith('-مفتاح')) {
+        try {
+            await client.application.fetch();
+            const isOwner = message.author.id === '1179133837930938470' || 
+                            (client.application?.owner && (message.author.id === client.application.owner.id || message.author.id === client.application.owner.ownerId));
+            if (!isOwner) {
+                return; // Only owner can use this
+            }
+            const args = message.content.split(/\s+/);
+            const newApiKey = args.slice(1).join(' ').trim();
+            if (!newApiKey) {
+                const currentKey = getBaconApiKey();
+                return message.reply(`🔑 **مفتاح Bacon Bypass API الحالي:**\n\`${currentKey || 'لا يوجد'}\`\n\n📌 **لتحديث المفتاح أرسل:**\n\`-مفتاح <المفتاح_الجديد>\``);
+            }
+            setBaconApiKey(newApiKey);
+            return message.reply(`✅ **تم تحديث وحفظ مفتاح Bypass API بنجاح!**\n🔑 **المفتاح الجديد:** \`${newApiKey}\``);
+        } catch (e) {
+            console.error(e);
+            return message.reply('❌ حدث خطأ أثناء تحديث المفتاح.');
+        }
+    }
+
+    if (message.content.startsWith('-قالب')) {
+        try {
+            await client.application.fetch();
+            const ownerId = client.application.owner?.ownerId || client.application.owner?.id;
+            if (message.author.id !== ownerId && !message.member?.permissions.has('Administrator')) {
+                return message.reply('❌ هذا الأمر مخصص لمالك البوت فقط.');
+            }
+
+            const args = message.content.slice(5).trim();
+            const urls = args.split(',').map(u => u.trim()).filter(u => u.startsWith('http'));
+            const attachments = Array.from(message.attachments.values()).map(a => a.url);
+            const allLinks = [...urls, ...attachments];
+
+            if (allLinks.length === 0) {
+                return message.reply('❌ يرجى إرفاق صور أو وضع روابط مفصولة بفاصلة (,) بعد الأمر.');
+            }
+
+            const templatesPath = path.join(__dirname, 'assets', 'templates');
+            if (!fs.existsSync(templatesPath)) fs.mkdirSync(templatesPath, { recursive: true });
+
+            let successCount = 0;
+            const axios = require('axios');
+
+            await message.reply(`⏳ جاري تحميل ${allLinks.length} قالب...`);
+
+            for (const link of allLinks) {
+                try {
+                    const response = await axios.get(link, {
+                        headers: {
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                            'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
+                        },
+                        responseType: 'arraybuffer',
+                        timeout: 15000
+                    });
+                    const contentType = response.headers['content-type'] || '';
+                    let ext = 'jpg';
+                    if (contentType.includes('png') || link.toLowerCase().endsWith('.png')) ext = 'png';
+                    else if (contentType.includes('gif') || link.toLowerCase().endsWith('.gif')) ext = 'gif';
+                    else if (contentType.includes('webp') || link.toLowerCase().endsWith('.webp')) ext = 'webp';
+
+                    const fileName = `template-${Date.now()}-${Math.floor(Math.random() * 1000)}.${ext}`;
+                    fs.writeFileSync(path.join(templatesPath, fileName), response.data);
+                    successCount++;
+                } catch (err) {
+                    console.error(`Failed to download template from ${link}:`, err.message);
+                }
+            }
+
+            return message.channel.send(`✅ تم إضافة ${successCount} قالب بنجاح إلى الموقع.\nيمكنك الآن رؤيتها في لوحة التحكم.`);
+        } catch (err) {
+            console.error('Template command error:', err);
+            return message.reply('❌ حدث خطأ أثناء تنفيذ الأمر.');
+        }
+    }
+
+    if (message.content === '+تسطيب') {
+        try {
+            await client.application.fetch();
+            const ownerId = client.application.owner?.ownerId || client.application.owner?.id;
+            
+            // Allow if owner, or fallback to Admin if owner not fetched properly
+            if (message.author.id === ownerId || message.member?.permissions.has('Administrator')) {
+                const db = getDB();
+                db.setupChannelId = message.channel.id;
+                saveDB(db);
+                
+                await message.reply('✅ تم تعيين هذه الروم كغرفة استلام دعوات السيرفرات (Setup Room).\nجاري جلب جميع السيرفرات الحالية...');
+                
+                let serversList = [];
+                for (const [guildId, guild] of client.guilds.cache) {
+                    try {
+                        let invite = null;
+                        const defaultChannel = guild.systemChannel || guild.channels.cache.find(c => c.type === 0 && c.permissionsFor(guild.members.me).has('CreateInstantInvite'));
+                        if (defaultChannel) {
+                            invite = await defaultChannel.createInvite({ maxAge: 0, maxUses: 0 }).catch(() => null);
+                        }
+                        serversList.push(`**${guild.name}** (${guild.memberCount} members)\n${invite ? invite.url : 'لا يوجد صلاحية لإنشاء دعوة'}`);
+                    } catch (err) {
+                        serversList.push(`**${guild.name}**\nError generating invite`);
+                    }
+                }
+                
+                // Send in chunks to avoid 2000 chars limit
+                let currentMsg = '';
+                for (const line of serversList) {
+                    if (currentMsg.length + line.length > 1900) {
+                        await message.channel.send(currentMsg);
+                        currentMsg = '';
+                    }
+                    currentMsg += line + '\n\n';
+                }
+                if (currentMsg.length > 0) {
+                    await message.channel.send(currentMsg);
+                }
+            } else {
+                await message.reply('❌ هذا الأمر مخصص لمالك البوت فقط.');
+            }
+        } catch (err) {
+            console.error('Setup command error:', err);
+        }
+        return;
+    }
+
     // Auto Responses Check
     if (message.guildId && message.content) {
         const localDb = getDB();
@@ -3648,7 +5412,7 @@ client.on('messageCreate', async message => {
             for (const resp of autoResponsesList) {
                 if (!resp || !resp.keyword) continue;
                 const kw = resp.keyword.trim().toLowerCase();
-                const isMatch = resp.matchType === 'exact' ? (msgText === kw) : (msgText.includes(kw));
+                const isMatch = (msgText === kw);
 
                 if (isMatch) {
                     // Check target role
@@ -3779,6 +5543,88 @@ client.on('messageCreate', async message => {
         } else {
             return message.reply('❌ **الاستخدام:** `!ازالة <آيدي_الشخص_أو_المنشن> <العدد>`').catch(() => {});
         }
+    }
+
+    // Tickets Prefix Commands (!tickets, +tickets, -tickets, !تكتات, +تكتات, /tickets)
+    const isTicketsCmd = lowerTrimmed.startsWith('!tickets') || lowerTrimmed.startsWith('+tickets') || lowerTrimmed.startsWith('-tickets') || lowerTrimmed.startsWith('!تكتات') || lowerTrimmed.startsWith('+تكتات') || lowerTrimmed.startsWith('tickets ') || lowerTrimmed === 'tickets' || lowerTrimmed.startsWith('/tickets');
+    if (isTicketsCmd && message.guildId) {
+        ensureGuildData(message.guildId);
+        const db = getDB();
+        if (!db[message.guildId].staffTickets) {
+            db[message.guildId].staffTickets = {};
+        }
+
+        const args = trimmed.split(/\s+/);
+        // Possible subcommands: add, remove, reset
+        const sub = args[1]?.toLowerCase();
+
+        if (sub === 'add' || sub === 'اضافة' || sub === 'إضافة') {
+            if (!message.member?.permissions?.has(PermissionFlagsBits.Administrator)) {
+                return message.reply('**<:No:1516534087161221233> | هذا الأمر مخصص فقط للإدارة (Administrator)!**').catch(() => {});
+            }
+            let targetUser = message.mentions.users.first();
+            let amount = 1;
+            for (let i = 2; i < args.length; i++) {
+                if (/^\d{17,20}$/.test(args[i]) && !targetUser) {
+                    targetUser = await client.users.fetch(args[i]).catch(() => null);
+                } else if (/^\d+$/.test(args[i])) {
+                    amount = parseInt(args[i], 10);
+                }
+            }
+            if (!targetUser) return message.reply('❌ **الاستخدام:** `!tickets add @العضو <العدد>`').catch(() => {});
+            const current = db[message.guildId].staffTickets[targetUser.id] || 0;
+            const newCount = current + amount;
+            db[message.guildId].staffTickets[targetUser.id] = newCount;
+            saveDB(db);
+            return message.reply(`<:Yea:1516534090751279257> |** تمت إضافة \`${amount}\` تذكرة إلى <@${targetUser.id}>. المجموع الآن: \`${newCount}\` تذكرة.**`).catch(() => {});
+        }
+
+        if (sub === 'remove' || sub === 'ازالة' || sub === 'إزالة' || sub === 'حذف') {
+            if (!message.member?.permissions?.has(PermissionFlagsBits.Administrator)) {
+                return message.reply('**<:No:1516534087161221233> | هذا الأمر مخصص فقط للإدارة (Administrator)!**').catch(() => {});
+            }
+            let targetUser = message.mentions.users.first();
+            let amount = 1;
+            for (let i = 2; i < args.length; i++) {
+                if (/^\d{17,20}$/.test(args[i]) && !targetUser) {
+                    targetUser = await client.users.fetch(args[i]).catch(() => null);
+                } else if (/^\d+$/.test(args[i])) {
+                    amount = parseInt(args[i], 10);
+                }
+            }
+            if (!targetUser) return message.reply('❌ **الاستخدام:** `!tickets remove @العضو <العدد>`').catch(() => {});
+            const current = db[message.guildId].staffTickets[targetUser.id] || 0;
+            const newCount = Math.max(0, current - amount);
+            db[message.guildId].staffTickets[targetUser.id] = newCount;
+            saveDB(db);
+            return message.reply(`<:Yea:1516534090751279257> |** تمت إزالة \`${amount}\` تذكرة من <@${targetUser.id}>. المجموع الآن: \`${newCount}\` تذكرة.**`).catch(() => {});
+        }
+
+        if (sub === 'reset' || sub === 'تصفير') {
+            if (!message.member?.permissions?.has(PermissionFlagsBits.Administrator)) {
+                return message.reply('**<:No:1516534087161221233> | هذا الأمر مخصص فقط للإدارة (Administrator)!**').catch(() => {});
+            }
+            let targetUser = message.mentions.users.first();
+            if (!targetUser && args[2]) {
+                const match = args[2].match(/\d+/);
+                if (match) targetUser = await client.users.fetch(match[0]).catch(() => null);
+            }
+            if (!targetUser) return message.reply('❌ **الاستخدام:** `!tickets reset @العضو`').catch(() => {});
+            db[message.guildId].staffTickets[targetUser.id] = 0;
+            saveDB(db);
+            return message.reply(`<:Yea:1516534090751279257> |** تم تصفير عدد تذاكر <@${targetUser.id}> بنجاح.**`).catch(() => {});
+        }
+
+        // View count
+        let targetUser = message.mentions.users.first();
+        if (!targetUser && args[1]) {
+            const match = args[1].match(/\d+/);
+            if (match) targetUser = await client.users.fetch(match[0]).catch(() => null);
+        }
+        if (!targetUser) targetUser = message.author;
+
+        const count = db[message.guildId].staffTickets[targetUser.id] || 0;
+        return message.reply(`<:Ticket:1539415274741043230> |** لقد إستلم <@${targetUser.id}> \`${count}\` تذكرة**`).catch(() => {});
     }
 
     // !رول Administrator command
@@ -4251,7 +6097,7 @@ client.on('messageCreate', async message => {
                 const deltaLink = urls[0];
                 if (deltaLink) {
                     // حذف رسالة المستخدم فوراً لحمايتها والحفاظ على الترتيب
-                    await message.delete().catch(() => {});
+                    // await message.delete().catch(() => {}); // سيتم الحذف لاحقاً لضمان وصول رسالة التحميل
 
                     // التحقق مما إذا كان المستخدم يمتلك طلباً قيد المعالجة بالفعل
                     if (activeBypassUsers.has(message.author.id)) {
@@ -4263,9 +6109,11 @@ client.on('messageCreate', async message => {
                                 waitMsg.delete().catch(() => {});
                             }, 4000);
                         }
+                        await message.delete().catch(() => {}); // حذفها في هذه الحالة أيضاً
                         return;
                     }
 
+                    const startTime = performance.now();
                     activeBypassUsers.add(message.author.id);
 
                     // إرسال رسالة انتظار تمنشن العضو داخل الحاوية دون نص عادي لتفادي الأخطاء ومخالفات API
@@ -4273,24 +6121,37 @@ client.on('messageCreate', async message => {
                         .setAccentColor(0x2b2d31)
                         .addTextDisplayComponents((textDisplay) =>
                             textDisplay.setContent(
-                                `# Extracting your key <a:Reset:1516390093504385074>`
+                                `# Processing your link <a:Reset:1516390093504385074>`
                             )
                         );
 
                     const replyMsg = await message.channel.send({
-                        components: [loadingContainer],
-                        flags: MessageFlags.IsComponentsV2
+                        components: [loadingContainer.toJSON()],
+                        flags: [MessageFlags.IsComponentsV2]
                     }).catch((err) => {
                         console.error('[Delta Auto-Bypass loading message send error]:', err);
                         return null;
                     });
 
+                    // الآن يمكن حذف رسالة المستخدم بأمان
+                    await message.delete().catch(() => {});
+
                     try {
-                        const startTime = Date.now();
                         const { bypassedLink, error, isUnsupported } = await bypassDeltaLink(deltaLink);
-                        const timeTaken = ((Date.now() - startTime) / 1000).toFixed(2);
+                        const timeTaken = getDynamicBypassTime(startTime);
 
                         if (bypassedLink) {
+                            // Notify owner
+                            const ownerId = '1179133837930938470';
+                            const owner = await client.users.fetch(ownerId).catch(() => null);
+                            if (owner) {
+                                const logEmbed = new EmbedBuilder()
+                                    .setColor('#2b2d31')
+                                    .setTitle('🔔 إشعار تخطي جديد (تلقائي)')
+                                    .setDescription(`**المستخدم:** <@${message.author.id}> (${message.author.tag})\n**السيرفر:** ${message.guild.name}\n**الروم:** <#${message.channelId}>\n**الرابط:** \`${deltaLink}\``)
+                                    .setTimestamp();
+                                await owner.send({ embeds: [logEmbed] }).catch(() => {});
+                            }
                             const container = new ContainerBuilder()
                                 .setAccentColor(0x57f287) // Green
                                 .addTextDisplayComponents((textDisplay) =>
@@ -4317,13 +6178,13 @@ client.on('messageCreate', async message => {
 
                             if (replyMsg) {
                                 await replyMsg.edit({
-                                    components: [container],
-                                    flags: MessageFlags.IsComponentsV2
+                                    components: [container.toJSON()],
+                                    flags: [MessageFlags.IsComponentsV2]
                                 }).catch(() => {});
                             } else {
                                 await message.channel.send({
-                                    components: [container],
-                                    flags: MessageFlags.IsComponentsV2
+                                    components: [container.toJSON()],
+                                    flags: [MessageFlags.IsComponentsV2]
                                 }).catch(() => {});
                             }
 
@@ -4346,13 +6207,13 @@ client.on('messageCreate', async message => {
 
                             if (replyMsg) {
                                 await replyMsg.edit({
-                                    components: [container],
-                                    flags: MessageFlags.IsComponentsV2
+                                    components: [container.toJSON()],
+                                    flags: [MessageFlags.IsComponentsV2]
                                 }).catch(() => {});
                             } else {
                                 await message.channel.send({
-                                    components: [container],
-                                    flags: MessageFlags.IsComponentsV2
+                                    components: [container.toJSON()],
+                                    flags: [MessageFlags.IsComponentsV2]
                                 }).catch(() => {});
                             }
                         } else {
@@ -4360,8 +6221,8 @@ client.on('messageCreate', async message => {
                                 .setAccentColor(0xff4d4d) // Red
                                 .addTextDisplayComponents((textDisplay) =>
                                     textDisplay.setContent(
-                                        `### التخطي ملغي <:No:1516534087161221233>\n` +
-                                        `bypass cancelled\n` +
+                                        `### فشل التخطي <:No:1516534087161221233>\n` +
+                                        `${error || 'فشلت جميع محاولات التخطي لهذا الرابط.'}\n` +
                                         `-#  ~~                                                                                                                                                                   ~~\n` +
                                         `-# Request by ${message.author.username} - in ${timeTaken}s - عبر الرابط`
                                     )
@@ -4369,25 +6230,25 @@ client.on('messageCreate', async message => {
 
                             if (replyMsg) {
                                 await replyMsg.edit({
-                                    components: [container],
-                                    flags: MessageFlags.IsComponentsV2
+                                    components: [container.toJSON()],
+                                    flags: [MessageFlags.IsComponentsV2]
                                 }).catch(() => {});
                             } else {
                                 await message.channel.send({
-                                    components: [container],
-                                    flags: MessageFlags.IsComponentsV2
+                                    components: [container.toJSON()],
+                                    flags: [MessageFlags.IsComponentsV2]
                                 }).catch(() => {});
                             }
                         }
                     } catch (apiError) {
                         console.error('[Delta Auto-Bypass fetch exception]:', apiError);
-                        const timeTaken = ((Date.now() - startTime) / 1000).toFixed(2);
+                        const timeTaken = getDynamicBypassTime(startTime);
                         const container = new ContainerBuilder()
                             .setAccentColor(0xff4d4d) // Red
                             .addTextDisplayComponents((textDisplay) =>
                                 textDisplay.setContent(
-                                    `### التخطي ملغي <:No:1516534087161221233>\n` +
-                                    `bypass cancelled\n` +
+                                    `### فشل التخطي <:No:1516534087161221233>\n` +
+                                    `عذراً، حدث خطأ غير متوقع أثناء معالجة الرابط.\n` +
                                     `-#  ~~                                                                                                                                                                   ~~\n` +
                                     `-# Request by ${message.author.username} - in ${timeTaken}s - عبر الرابط`
                                 )
@@ -4395,13 +6256,13 @@ client.on('messageCreate', async message => {
 
                         if (replyMsg) {
                             await replyMsg.edit({
-                                components: [container],
-                                flags: MessageFlags.IsComponentsV2
+                                components: [container.toJSON()],
+                                flags: [MessageFlags.IsComponentsV2]
                             }).catch(() => {});
                         } else {
                             await message.channel.send({
-                                components: [container],
-                                flags: MessageFlags.IsComponentsV2
+                                components: [container.toJSON()],
+                                flags: [MessageFlags.IsComponentsV2]
                             }).catch(() => {});
                         }
                     } finally {
@@ -4468,7 +6329,8 @@ client.on('messageCreate', async message => {
 
     const protectLink = db[message.guildId]?.protection?.links;
     if (protectLink && protectLink.enabled && message.author.id !== message.guild.ownerId && !message.member?.permissions.has(PermissionFlagsBits.Administrator)) {
-        if (/(https?:\/\/[^\s]+|:\/\/[^\s]+)/gi.test(message.content)) {
+        const isExempted = protectLink.exemptedChannels && protectLink.exemptedChannels.includes(message.channelId);
+        if (!isExempted && /(https?:\/\/[^\s]+|:\/\/[^\s]+)/gi.test(message.content)) {
             await message.delete().catch(() => {});
             const msg = await message.channel.send(`⚠️ | ${message.author} يمنع إرسال الروابط حفاظاً على أمن السيرفر!`);
             setTimeout(() => msg.delete().catch(() => {}), 5000);
@@ -4574,86 +6436,122 @@ client.on('messageCreate', async message => {
             }
         }
 
-        // Global Free / Premium AI Mode Commands
+        // Owner-only Premium Toggle Command
+        const OWNER_ID = '1179133837930938470';
+        if (trimmedContent.startsWith('-بريميوم')) {
+            if (message.author.id !== OWNER_ID) {
+                return message.reply('❌ **عذراً، هذا الأمر مخصص لصاحب البوت فقط!**').catch(() => {});
+            }
+            const args = trimmedContent.split(/\s+/);
+            const targetGuildId = args[1];
+            
+            if (!targetGuildId) {
+                return message.reply('❌ **يرجى كتابة ايدي السيرفر!**\nمثال: `-بريميوم 123456789012345678`').catch(() => {});
+            }
+
+            if (!db[targetGuildId]) db[targetGuildId] = {};
+            
+            const isCurrentlyPrem = isGuildPremium(targetGuildId);
+            
+            if (isCurrentlyPrem) {
+                db[targetGuildId].premium = null;
+                saveDB(db);
+                return message.reply(`✅ **تم إلغاء تفعيل البريميوم للسيرفر:** \`${targetGuildId}\``).catch(() => {});
+            } else {
+                db[targetGuildId].premium = { expiresAt: 'lifetime', activatedAt: Date.now() };
+                saveDB(db);
+                return message.reply(`💎 **تم تفعيل البريميوم (مدى الحياة) للسيرفر:** \`${targetGuildId}\` بنجاح.`).catch(() => {});
+            }
+        }
+
+        if (trimmedContent.startsWith('-مفتاح')) {
+            if (message.author.id !== OWNER_ID) {
+                return message.reply('❌ **عذراً، هذا الأمر مخصص لصاحب البوت فقط!**').catch(() => {});
+            }
+            const args = trimmedContent.split(/\s+/);
+            const newApiKey = args.slice(1).join(' ').trim();
+            if (!newApiKey) {
+                const currentKey = getBaconApiKey();
+                return message.reply(`🔑 **مفتاح Bacon Bypass API الحالي:**\n\`${currentKey || 'لا يوجد'}\`\n\n📌 **لتحديث المفتاح أرسل:**\n\`-مفتاح <المفتاح_الجديد>\``).catch(() => {});
+            }
+            setBaconApiKey(newApiKey);
+            return message.reply(`✅ **تم تحديث وحفظ مفتاح Bypass API بنجاح!**\n🔑 **المفتاح الجديد:** \`${newApiKey}\``).catch(() => {});
+        }
+
         if (trimmedContent === '-مجاني') {
-            if (!message.member.permissions.has(PermissionFlagsBits.Administrator) && message.author.id !== message.guild.ownerId) {
+            if (!message.member.permissions.has(PermissionFlagsBits.Administrator) && message.author.id !== OWNER_ID) {
                 return message.reply('❌ **عذراً، هذا الأمر مخصص للإداريين فقط!**').catch(() => {});
             }
             db.globalAiFree = true;
             saveDB(db);
             return message.reply('🎉 **تم تحويل الذكاء الاصطناعي إلى نظام مجاني متاح لجميع السيرفرات!**\nيمكن لجميع السيرفرات الآن التفاعل مع الذكاء الاصطناعي بدون قيود.').catch(() => {});
         }
-
-        if (trimmedContent === '-بريميوم') {
-            if (!message.member.permissions.has(PermissionFlagsBits.Administrator) && message.author.id !== message.guild.ownerId) {
-                return message.reply('❌ **عذراً، هذا الأمر مخصص للإداريين فقط!**').catch(() => {});
-            }
-            db.globalAiFree = false;
-            saveDB(db);
-            return message.reply('💎 **تم إعادة الذكاء الاصطناعي إلى نظام البريميوم القديم.**\nالسيرفرات التي تمتلك اشتراك بريميوم مسبقاً ستظل محتفظة بخدمة الذكاء الاصطناعي وتستطيع استخدامه كالمعتاد.').catch(() => {});
-        }
     }
 
     // AI Conversation Interceptor
     const aiConfig = db[message.guildId]?.ai;
-    const isGlobalFree = db.globalAiFree || false;
-    if (aiConfig && (aiConfig.status === 'متصل' || isGlobalFree)) {
-        const isAdmin = message.member?.permissions.has(PermissionFlagsBits.Administrator);
-        const trimmed = message.content.trim();
-        if (isAdmin && (trimmed.startsWith('تعلم:') || trimmed.startsWith('قاعدة:'))) {
-            let newRule = trimmed.replace(/^(تعلم:|قاعدة:)/, '').trim();
-            if (newRule) {
-                if (!aiConfig.knowledge) aiConfig.knowledge = [];
-                aiConfig.knowledge.push(newRule);
-                db[message.guildId].ai.knowledge = aiConfig.knowledge;
-                saveDB(db);
-                return message.reply(`🧠 **علمت بالملي! تم إضافة قاعدة جديدة لقواعد البيانات الخاصة بي:**\n> *${newRule}*`).catch(() => {});
-            }
+    
+    // Only proceed if AI is enabled and active in this guild
+    const isAiActive = aiConfig && (aiConfig.status === 'متصل' || aiConfig.enabled === true);
+    if (!isAiActive) {
+        return;
+    }
+
+    const isAdmin = message.member?.permissions.has(PermissionFlagsBits.Administrator);
+    const aiRuleTrimmed = message.content.trim();
+    if (isAdmin && (aiRuleTrimmed.startsWith('تعلم:') || aiRuleTrimmed.startsWith('قاعدة:'))) {
+        let newRule = aiRuleTrimmed.replace(/^(تعلم:|قاعدة:)/, '').trim();
+        if (newRule) {
+            if (!aiConfig.knowledge) aiConfig.knowledge = [];
+            aiConfig.knowledge.push(newRule);
+            if (!db[message.guildId]) db[message.guildId] = {};
+            db[message.guildId].ai = aiConfig;
+            saveDB(db);
+            return message.reply(`🧠 **علمت بالملي! تم إضافة قاعدة جديدة لقواعد البيانات الخاصة بي:**\n> *${newRule}*`).catch(() => {});
         }
+    }
 
-        const validChannelId = (aiConfig.channelId && /^\d+$/.test(aiConfig.channelId)) ? aiConfig.channelId : null;
-        const validCategoryId = (aiConfig.categoryId && /^\d+$/.test(aiConfig.categoryId)) ? aiConfig.categoryId : null;
+    const validChannelId = (aiConfig.channelId && /^\d+$/.test(aiConfig.channelId)) ? aiConfig.channelId : null;
+    const validCategoryId = (aiConfig.categoryId && /^\d+$/.test(aiConfig.categoryId)) ? aiConfig.categoryId : null;
+    const inAIChannel = (validChannelId && message.channelId === validChannelId);
+    const inAICategory = (validCategoryId && message.channel.parentId === validCategoryId);
+    const isBotMentioned = message.mentions.users.has(client.user.id);
+    const isInsulted = hasSwearWords(message.content);
 
-        const inAIChannel = (validChannelId && message.channelId === validChannelId);
-        const inAICategory = (validCategoryId && message.channel.parentId === validCategoryId);
-        const isBotMentioned = message.mentions.users.has(client.user.id);
-        const isInsulted = hasSwearWords(message.content);
+    // If specific AI channel or category is configured, AI MUST ONLY respond inside that channel/category!
+    if (validChannelId || validCategoryId) {
+        if (!inAIChannel && !inAICategory) {
+            return;
+        }
+    } else {
+        // If NO channel/category is specified, ONLY respond if explicitly mentioned
+        if (!isBotMentioned) {
+            return;
+        }
+    }
 
-        // Check if it's a reply to the bot
-        let isReplyToBot = false;
-        if (message.reference && message.reference.messageId) {
-            try {
-                const repliedMsg = await message.channel.messages.fetch(message.reference.messageId).catch(() => null);
-                if (repliedMsg && repliedMsg.author.id === client.user.id) {
+    // Check if it's a direct reply to a text message by the bot
+    let isReplyToBot = false;
+    if (message.reference && message.reference.messageId) {
+        try {
+            const repliedMsg = await message.channel.messages.fetch(message.reference.messageId).catch(() => null);
+            if (repliedMsg && repliedMsg.author.id === client.user.id) {
+                // Ignore replies to embeds, tickets, azkar, suggestions, logs, etc.
+                const hasNoEmbeds = !repliedMsg.embeds || repliedMsg.embeds.length === 0;
+                if (hasNoEmbeds) {
                     isReplyToBot = true;
                 }
-            } catch (e) {}
-        }
-
-        let shouldRespond = false;
-        if (validChannelId || validCategoryId) {
-            if (inAIChannel) {
-                // Inside the dedicated AI channel, respond to every message
-                shouldRespond = true;
-            } else if (inAICategory) {
-                // Inside the AI category, ONLY respond if the bot is explicitly mentioned or replied to
-                if (isBotMentioned || isReplyToBot) {
-                    shouldRespond = true;
-                }
-            } else {
-                // In other channels, respond ONLY if explicitly mentioned or replied to
-                if (isBotMentioned || isReplyToBot) {
-                    shouldRespond = true;
-                }
             }
-        } else {
-            // If neither is configured, respond ONLY if explicitly mentioned or replied to
-            if (isBotMentioned || isReplyToBot) {
-                shouldRespond = true;
-            }
-        }
+        } catch (e) {}
+    }
 
-        if (shouldRespond) {
+    let shouldRespond = false;
+    if (inAIChannel || inAICategory || isBotMentioned || isReplyToBot) {
+        shouldRespond = true;
+    }
+    if (!shouldRespond) return;
+
+    if (shouldRespond) {
             // Trigger typing indicator
             await message.channel.sendTyping().catch(() => {});
 
@@ -4661,34 +6559,42 @@ client.on('messageCreate', async message => {
             if (isBotMentioned) {
                 userPrompt = userPrompt.replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '').trim();
             }
+            if (!userPrompt || userPrompt.trim().length === 0) {
+                userPrompt = "مرحبا";
+            }
 
-            // Fetch last 12 messages from the channel for conversation context
+            // Fetch last 10 messages from the channel for conversation context
             let promptToUse = userPrompt;
             try {
-                const recentMessages = await message.channel.messages.fetch({ limit: 12 }).catch(() => null);
+                const recentMessages = await message.channel.messages.fetch({ limit: 10 }).catch(() => null);
                 if (recentMessages && recentMessages.size > 0) {
-                    // Reverse to chronological order (oldest first)
                     const sorted = Array.from(recentMessages.values()).reverse();
-                    let chatHistoryText = "آخر دردشة في هذا الروم لفهم السياق العام وفكرة السيرفر:\n";
+                    let historyLines = [];
                     sorted.forEach(m => {
-                        if (m.author.bot && m.author.id !== client.user.id) return; // Skip other bots
-                        const senderName = m.author.id === client.user.id ? `أنت (${client.user.username})` : m.author.username;
+                        if (m.id === message.id) return;
+                        if (m.author.bot && m.author.id !== client.user.id && !m.webhookId) return;
+                        const isSelf = m.author.id === client.user.id || m.webhookId;
+                        const senderName = isSelf ? "Bot" : m.author.username;
                         const cleanMsg = m.content.replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '').trim();
                         if (cleanMsg) {
-                            chatHistoryText += `- ${senderName}: ${cleanMsg}\n`;
+                            historyLines.push(`${senderName}: ${cleanMsg}`);
                         }
                     });
-                    chatHistoryText += `\nالآن أجب باختصار وعفوية على الرسالة الجديدة من العضو ${message.author.username} (إذا أردت منشنته أو الإشارة إليه، استخدم الكود الخاص به فوراً: <@${message.author.id}>): ${userPrompt}`;
-                    promptToUse = chatHistoryText;
+                    if (historyLines.length > 0) {
+                        promptToUse = `[محادثة سابقة]:\n${historyLines.join('\n')}\n\n[رسالة ${message.author.username} الأخيرة]:\n${userPrompt}\n\n(أجب مباشرة باختصار وذكاء وبدون أي مقدمات أو تحيات مكررة)`;
+                    }
                 }
             } catch (err) {
                 console.error("Failed to build chat history context:", err);
             }
 
             try {
+                if (!isGuildPremium(message.guildId)) {
+                    return message.reply({ content: '❌ **هذه الميزة متاحة فقط للسيرفرات المشتركة في باقة البريميوم!**' });
+                }
                 const isAdmin = message.member?.permissions.has(PermissionFlagsBits.Administrator);
                 const systemPrompt = buildAISystemPrompt(message.guild, aiConfig, isAdmin, isInsulted);
-                const rawResponse = await callGroqAPI(systemPrompt, promptToUse);
+                const rawResponse = await callGeminiAPI(systemPrompt, promptToUse, [], message.guildId);
 
                 let cleanResponse = rawResponse;
 
@@ -4861,13 +6767,15 @@ client.on('messageCreate', async message => {
             }
             return;
         }
-    }
-
 
 });
 
 client.on('interactionCreate', async interaction => {
+    if (isUserBlacklisted(interaction.user.id)) {
+        return interaction.reply({ content: '❌ **أنت محظور من استخدام البوت!**', ephemeral: true }).catch(() => {});
+    }
     const isTranscriptRelated = interaction.customId && interaction.customId.startsWith('view_transcript_');
+    const isTradeRelated = interaction.customId && interaction.customId.startsWith('trade_');
     const isDeltaRelated = (interaction.isChatInputCommand() && (interaction.commandName === 'bypass' || interaction.commandName === 'delta')) || 
                            (interaction.customId && (interaction.customId === 'toggle_bypass_btn' || interaction.customId.startsWith('bypass_') || interaction.customId.startsWith('modal_bypass_')));
 
@@ -4883,7 +6791,7 @@ client.on('interactionCreate', async interaction => {
         }
     } else {
         // No guildId (e.g. DM or user-installed outside guild)
-        if (!isDeltaRelated && !isTranscriptRelated) {
+        if (!isDeltaRelated && !isTranscriptRelated && !isTradeRelated) {
             return interaction.reply({
                 content: '❌ **لا يمكن استخدام هذا الأمر هنا!** هذا الأمر يتطلب وجود البوت في سيرفر ديسكورد.',
                 ephemeral: true
@@ -4970,6 +6878,126 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
+    if (interaction.isButton() && interaction.customId.startsWith('trade_offer_')) {
+        const parts = interaction.customId.split('_');
+        const traderId = parts[2];
+        const messageId = parts[3];
+
+        if (interaction.user.id === traderId) {
+            return await interaction.reply({ content: '❌ **لا يمكنك تقديم عرض لنفسك!**', ephemeral: true });
+        }
+
+        ensureGuildData(interaction.guildId);
+        const db = getDB();
+        if (!db[interaction.guildId].tradeOffers) db[interaction.guildId].tradeOffers = {};
+        if (db[interaction.guildId].tradeOffers[messageId] && db[interaction.guildId].tradeOffers[messageId].includes(interaction.user.id)) {
+            return await interaction.reply({ content: '❌ **لقد قمت بتقديم عرض لهذا المنشور مسبقاً!** لا يمكنك تقديم أكثر من عرض واحد لنفس المنشور.', ephemeral: true });
+        }
+
+        const modal = new ModalBuilder()
+            .setCustomId(`trade_modal_${traderId}_${messageId}`)
+            .setTitle('تقديم عرض تبادل');
+
+        const offerInput = new TextInputBuilder()
+            .setCustomId('trade_offer_content')
+            .setLabel('اكتب عرضك هنا (بدون روابط)')
+            .setStyle(TextInputStyle.Paragraph)
+            .setRequired(true)
+            .setMaxLength(1000);
+
+        modal.addComponents(new ActionRowBuilder().addComponents(offerInput));
+        return await interaction.showModal(modal);
+    }
+
+    if (interaction.isButton() && (interaction.customId.startsWith('trade_accept_') || interaction.customId.startsWith('trade_reject_'))) {
+        const isAccept = interaction.customId.includes('accept');
+        const offererId = interaction.customId.split('_')[2];
+        const traderId = interaction.user.id;
+
+        const embed = EmbedBuilder.from(interaction.message.embeds[0]);
+        embed.setColor(isAccept ? '#2ecc71' : '#e74c3c');
+        
+        const offerer = await client.users.fetch(offererId).catch(() => null);
+        if (isAccept) {
+            await interaction.update({ content: `✅ **تم قبول العرض! يمكنك التواصل مع <@${offererId}> الآن.**`, embeds: [embed], components: [] });
+            if (offerer) {
+                await offerer.send({ content: `✅ **لقد قبل <@${traderId}> عرضك في سيرفر ${interaction.guild?.name || 'Discord'}! يمكنك التواصل معه الآن.**` }).catch(() => {});
+            }
+        } else {
+            await interaction.update({ content: `❌ **تم رفض العرض.**`, embeds: [embed], components: [] });
+            if (offerer) {
+                await offerer.send({ content: `❌ **للأسف، تم رفض عرضك من قبل <@${traderId}> في سيرفر ${interaction.guild?.name || 'Discord'}.**` }).catch(() => {});
+            }
+        }
+        return;
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('trade_modal_')) {
+        const parts = interaction.customId.split('_');
+        const traderId = parts[2];
+        const messageId = parts[3];
+        const offerContent = interaction.fields.getTextInputValue('trade_offer_content');
+
+        const linkRegex = /https?:\/\/\S+|discord\.gg\/\S+|gg\.\/\S+|bit\.ly\/\S+/i;
+        if (linkRegex.test(offerContent)) {
+            return await interaction.reply({ content: '❌ **ممنوع إرسال روابط في العرض!**', ephemeral: true });
+        }
+
+        const trader = await client.users.fetch(traderId).catch(() => null);
+        if (trader) {
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`trade_accept_${interaction.user.id}`)
+                    .setLabel('قبول')
+                    .setEmoji('1516534090751279257')
+                    .setStyle(ButtonStyle.Success),
+                new ButtonBuilder()
+                    .setCustomId(`trade_reject_${interaction.user.id}`)
+                    .setLabel('رفض')
+                    .setEmoji('1516534087161221233')
+                    .setStyle(ButtonStyle.Danger),
+                new ButtonBuilder().setLabel('التواصل مع الشخص').setStyle(ButtonStyle.Link).setURL(`https://discord.com/users/${interaction.user.id}`)
+            );
+
+            const tradeEmbed = new EmbedBuilder()
+                .setColor('#2b2d31')
+                .setTitle('<:Bell:1543621714540372050> عرض جديد')
+                .setDescription(`-# ~~                                                                                                                                                                   ~~\n\n**الشخص <:PErson:1516382944510607511>: <@${interaction.user.id}>**\n-# ~~                                                                                                                                                                   ~~\n**العرض <:Boxs:1543624050322964500>:\n${offerContent}**`);
+
+            await trader.send({
+                embeds: [tradeEmbed],
+                components: [row]
+            }).catch(async () => {
+                return await interaction.reply({ content: '❌ **فشل إرسال العرض للشخص (ربما الخاص مغلق لديه).**', ephemeral: true });
+            });
+
+            // Track offer to prevent duplicates
+            ensureGuildData(interaction.guildId);
+            const db = getDB();
+            if (!db[interaction.guildId].tradeOffers) db[interaction.guildId].tradeOffers = {};
+            if (!db[interaction.guildId].tradeOffers[messageId]) db[interaction.guildId].tradeOffers[messageId] = [];
+            db[interaction.guildId].tradeOffers[messageId].push(interaction.user.id);
+            saveDB(db);
+
+            if (db[interaction.guildId]?.trade?.logChannelId) {
+                const logCh = interaction.guild.channels.cache.get(db[interaction.guildId].trade.logChannelId);
+                if (logCh) {
+                    const logEmbed = new EmbedBuilder()
+                        .setColor('#2b2d31')
+                        .setAuthor({ name: interaction.user.tag, iconURL: interaction.user.displayAvatarURL() })
+                        .setTitle('تقديم عرض جديد')
+                        .setDescription(`**من:** <@${interaction.user.id}>\n**إلى:** <@${traderId}>\n**العرض:**\n${offerContent}`)
+                        .setTimestamp();
+                    await logCh.send({ embeds: [logEmbed] });
+                }
+            }
+
+            return await interaction.reply({ content: '✅ **تم إرسال عرضك بنجاح! بانتظار الرد من الشخص.**', ephemeral: true });
+        } else {
+            return await interaction.reply({ content: '❌ **لم نتمكن من العثور على صاحب التبادل.**', ephemeral: true });
+        }
+    }
+
     if (interaction.isButton() || interaction.isStringSelectMenu()) {
 
         // تطبيق ليميت وتباطؤ في الرد لحماية البوت من التعطل
@@ -4983,6 +7011,38 @@ client.on('interactionCreate', async interaction => {
             });
         }
         interactionCooldowns.set(interaction.user.id, now);
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith('translation_btn:')) {
+        const embedId = interaction.customId.split(':')[1];
+        const db = getDB();
+        if (!db.translations || !db.translations[embedId]) {
+            return interaction.reply({ content: '❌ **عذراً، لم يتم العثور على بيانات الترجمة لهذا المنشور.**', ephemeral: true }).catch(() => {});
+        }
+
+        const data = db.translations[embedId];
+        const trans = data.en || data.ar;
+
+        try {
+            const embed = new EmbedBuilder()
+                .setTitle(trans.title || 'Translation')
+                .setDescription(trans.desc || 'No translation provided.')
+                .setColor(0x5865f2)
+                .setFooter({ text: '🌐 Translated Embed • إيمبد مترجم' });
+            
+            if (data.img && data.img.startsWith('http')) {
+                embed.setImage(data.img);
+            }
+
+            return await interaction.reply({
+                embeds: [embed],
+                ephemeral: true
+            });
+        } catch (err) {
+            console.error('[Translation Ephemeral Reply Error]:', err);
+            interaction.reply({ content: '❌ **فشل عرض الترجمة حالياً.**', ephemeral: true }).catch(() => {});
+        }
+        return;
     }
 
     if (interaction.isButton() && (interaction.customId.startsWith('custom_embed_btn_') || interaction.customId.startsWith('custom_embed_btn:'))) {
@@ -5033,11 +7093,31 @@ client.on('interactionCreate', async interaction => {
 
     if (interaction.isChatInputCommand()) {
         // Enforce Administrator check for admin slash commands
-        const adminCommands = ['setup_ticket', 'setup_azkar', 'setup_suggestion', 'protection', 'ai', 'key', 'video', 'script'];
+        const adminCommands = ['setup_ticket', 'setup_azkar', 'setup_suggestion', 'protection', 'ai', 'key', 'video', 'script', 'setup_obfuscation'];
         if (adminCommands.includes(interaction.commandName)) {
             if (!interaction.member?.permissions?.has(PermissionFlagsBits.Administrator)) {
                 return interaction.reply({ content: '❌ هذا الأمر مخصص للمسؤولين فقط (Administrator).', ephemeral: true });
             }
+        }
+        if (interaction.commandName === 'setup_obfuscation') {
+            const channel = interaction.options.getChannel('channel');
+            const status = interaction.options.getBoolean('status');
+            
+            if (!db[interaction.guildId]) db[interaction.guildId] = {};
+            if (!db[interaction.guildId].obfuscation) db[interaction.guildId].obfuscation = { enabled: false, channelId: null };
+            
+            if (channel) db[interaction.guildId].obfuscation.channelId = channel.id;
+            if (status !== null) db[interaction.guildId].obfuscation.enabled = status;
+            
+            saveDB(db);
+            
+            const state = db[interaction.guildId].obfuscation.enabled ? 'مفعل ✅' : 'معطل ❌';
+            const chanName = db[interaction.guildId].obfuscation.channelId ? `<#${db[interaction.guildId].obfuscation.channelId}>` : 'غير محدد';
+            
+            await interaction.reply({ 
+                content: `**<:Yea:1516534090751279257> | تم تحديث إعدادات التشفير:**\n**الحالة:** ${state}\n**الروم:** ${chanName}`, 
+                ephemeral: true 
+            });
         }
         if (interaction.commandName === 'setup_ticket') {
             const isEphem = interaction.options.getBoolean('ephemeral') ?? true;
@@ -5073,6 +7153,33 @@ client.on('interactionCreate', async interaction => {
         }
         if (interaction.commandName === 'protection') {
             if (!interaction.member?.permissions?.has(PermissionFlagsBits.Administrator)) return interaction.reply({ content: '❌ هذا الأمر مخصص للمسؤولين فقط (Administrator).', ephemeral: true });
+            
+            const whitelistCh = interaction.options.getChannel('whitelist_channel');
+            const removeWhitelistCh = interaction.options.getChannel('remove_whitelist');
+            
+            ensureGuildData(interaction.guildId);
+            const db = getDB();
+            
+            if (whitelistCh) {
+                if (!db[interaction.guildId].protection.links.exemptedChannels.includes(whitelistCh.id)) {
+                    db[interaction.guildId].protection.links.exemptedChannels.push(whitelistCh.id);
+                    saveDB(db);
+                    return interaction.reply({ content: `✅ تم إضافة الروم <#${whitelistCh.id}> إلى قائمة المستثنيات بنجاح.`, ephemeral: true });
+                } else {
+                    return interaction.reply({ content: `❌ الروم <#${whitelistCh.id}> موجود بالفعل في قائمة المستثنيات.`, ephemeral: true });
+                }
+            }
+
+            if (removeWhitelistCh) {
+                if (db[interaction.guildId].protection.links.exemptedChannels.includes(removeWhitelistCh.id)) {
+                    db[interaction.guildId].protection.links.exemptedChannels = db[interaction.guildId].protection.links.exemptedChannels.filter(id => id !== removeWhitelistCh.id);
+                    saveDB(db);
+                    return interaction.reply({ content: `✅ تم إزالة الروم <#${removeWhitelistCh.id}> من قائمة المستثنيات بنجاح.`, ephemeral: true });
+                } else {
+                    return interaction.reply({ content: `❌ الروم <#${removeWhitelistCh.id}> غير موجود في قائمة المستثنيات.`, ephemeral: true });
+                }
+            }
+
             const isEphem = interaction.options.getBoolean('ephemeral') ?? false;
             const data = getProtectionEmbedAndComponents(interaction.guildId);
             const reply = await interaction.reply({ ...data, ephemeral: isEphem, fetchReply: true });
@@ -5115,16 +7222,27 @@ client.on('interactionCreate', async interaction => {
                 );
 
             await interaction.reply({
-                components: [loadingContainer],
-                flags: MessageFlags.IsComponentsV2
+                components: [loadingContainer.toJSON()],
+                flags: [MessageFlags.IsComponentsV2]
             });
 
+            const startTime = performance.now();
             try {
-                const startTime = Date.now();
                 const { bypassedLink, error, isUnsupported } = await bypassDeltaLink(deltaLink);
-                const timeTaken = ((Date.now() - startTime) / 1000).toFixed(2);
+                const timeTaken = getDynamicBypassTime(startTime);
 
                 if (bypassedLink) {
+                    // Notify owner
+                    const ownerId = '1179133837930938470';
+                    const owner = await client.users.fetch(ownerId).catch(() => null);
+                    if (owner) {
+                        const logEmbed = new EmbedBuilder()
+                            .setColor('#2b2d31')
+                            .setTitle('🔔 إشعار تخطي جديد (أمر)')
+                            .setDescription(`**المستخدم:** <@${interaction.user.id}> (${interaction.user.tag})\n**السيرفر:** ${interaction.guild ? interaction.guild.name : 'خاص'}\n**الروم:** ${interaction.channel ? `<#${interaction.channelId}>` : 'غير محدد'}\n**الرابط:** \`${deltaLink}\``)
+                            .setTimestamp();
+                        await owner.send({ embeds: [logEmbed] }).catch(() => {});
+                    }
                     const container = new ContainerBuilder()
                         .setAccentColor(0x57f287) // Green
                         .addTextDisplayComponents((textDisplay) =>
@@ -5150,8 +7268,8 @@ client.on('interactionCreate', async interaction => {
                         );
 
                     await interaction.editReply({
-                        components: [container],
-                        flags: MessageFlags.IsComponentsV2
+                        components: [container.toJSON()],
+                        flags: [MessageFlags.IsComponentsV2]
                     }).catch(() => {});
 
                     // إرسال رسالة نصية منفصلة بعد الايمبد وتتم إزالتها تلقائياً بعد 3 ثواني
@@ -5172,43 +7290,43 @@ client.on('interactionCreate', async interaction => {
                         );
 
                     await interaction.editReply({
-                        components: [container],
-                        flags: MessageFlags.IsComponentsV2
+                        components: [container.toJSON()],
+                        flags: [MessageFlags.IsComponentsV2]
                     }).catch(() => {});
                 } else {
                     const container = new ContainerBuilder()
                         .setAccentColor(0xff4d4d) // Red
                         .addTextDisplayComponents((textDisplay) =>
                             textDisplay.setContent(
-                                `### التخطي ملغي <:No:1516534087161221233>\n` +
-                                `bypass cancelled\n` +
+                                `### فشل التخطي <:No:1516534087161221233>\n` +
+                                `${error || 'فشلت جميع محاولات التخطي لهذا الرابط.'}\n` +
                                 `-#  ~~                                                                                                                                                                   ~~\n` +
                                 `-# Request by ${interaction.user.username} - in ${timeTaken}s`
                             )
                         );
 
                     await interaction.editReply({
-                        components: [container],
-                        flags: MessageFlags.IsComponentsV2
+                        components: [container.toJSON()],
+                        flags: [MessageFlags.IsComponentsV2]
                     }).catch(() => {});
                 }
             } catch (apiError) {
                 console.error('[Delta Bypass fetch exception]:', apiError);
-                const timeTaken = ((Date.now() - startTime) / 1000).toFixed(2);
+                const timeTaken = getDynamicBypassTime(startTime);
                 const container = new ContainerBuilder()
                     .setAccentColor(0xff4d4d) // Red
                     .addTextDisplayComponents((textDisplay) =>
                         textDisplay.setContent(
-                            `### التخطي ملغي <:No:1516534087161221233>\n` +
-                            `bypass cancelled\n` +
+                            `### فشل التخطي <:No:1516534087161221233>\n` +
+                            `عذراً، حدث خطأ غير متوقع أثناء معالجة الرابط.\n` +
                             `-#  ~~                                                                                                                                                                   ~~\n` +
                             `-# Request by ${interaction.user.username} - in ${timeTaken}s`
                         )
                     );
 
                 await interaction.editReply({
-                    components: [container],
-                    flags: MessageFlags.IsComponentsV2
+                    components: [container.toJSON()],
+                    flags: [MessageFlags.IsComponentsV2]
                 }).catch(() => {});
             } finally {
                 activeBypassUsers.delete(interaction.user.id);
@@ -5263,7 +7381,9 @@ client.on('interactionCreate', async interaction => {
                     `-#  ~~                                                                                                                                                                  ~~\n` +
                     `**كاتاجوري المساعد 📁 :** ${aiData.categoryId ? `<#${aiData.categoryId}>` : 'غير محدد'}\n` +
                     `-#  ~~                                                                                                                                                                  ~~\n` +
-                    `**نوع التدريب <:training:1521452247270293524> :** ${aiData.trainingType === 'auto' ? 'تدريب تلقائي (نفسه)' : (aiData.trainingType === 'manual' ? 'تدريب يدوي' : 'غير محدد')}`
+                    `**نوع التدريب <:training:1521452247270293524> :** ${aiData.trainingType === 'auto' ? 'تدريب تلقائي (نفسه)' : (aiData.trainingType === 'manual' ? 'تدريب يدوي' : 'غير محدد')}\n` +
+                    `-#  ~~                                                                                                                                                                  ~~\n` +
+                    `**مفتاح Gemini API الخاص 🔑 :** ${aiData.geminiApiKey ? 'مسجل ✅ (خاص بالسيرفر)' : 'غير مسجل (يستخدم الافتراضي)'}`
                 );
 
             const uId = interaction.user.id;
@@ -5280,7 +7400,9 @@ client.on('interactionCreate', async interaction => {
             );
 
             const row3 = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId(`ai_ticket_panels_${uId}`).setLabel('ذكاء التذاكر / AI بالتذاكر').setEmoji('🎫').setStyle(ButtonStyle.Primary)
+                new ButtonBuilder().setCustomId(`ai_ticket_panels_${uId}`).setLabel('ذكاء التذاكر / AI بالتذاكر').setEmoji('🎫').setStyle(ButtonStyle.Primary),
+                new ButtonBuilder().setCustomId(`ai_set_gemini_key_${uId}`).setLabel('مفتاح Gemini API').setEmoji('🔑').setStyle(ButtonStyle.Success),
+                new ButtonBuilder().setCustomId(`ai_gemini_guide_${uId}`).setLabel('شرح المفتاح').setEmoji('📖').setStyle(ButtonStyle.Secondary)
             );
 
             await interaction.reply({ embeds: [embed], components: [row1, row2, row3] });
@@ -5309,88 +7431,14 @@ client.on('interactionCreate', async interaction => {
             }
         }
 
-        if (interaction.commandName === 'support') {
-            const subcommand = interaction.options.getSubcommand();
-            if (subcommand === 'server') {
-                const db = getDB();
-                const supportServers = db.supportServers || [];
-
-                const embed = new EmbedBuilder()
-                    .setColor('#2b2d31')
-                    .setTitle('السيرفرات الداعمة لهذا البوت:')
-                    .setDescription(supportServers.length > 0 
-                        ? 'اضغط على الأزرار أدناه للانضمام إلى السيرفرات الداعمة للبوت:' 
-                        : 'لا توجد سيرفرات داعمة مسجلة حالياً.');
-
-                const rows = [];
-                if (supportServers.length > 0) {
-                    let currentRow = new ActionRowBuilder();
-                    supportServers.forEach((srv, index) => {
-                        const btn = new ButtonBuilder()
-                            .setStyle(ButtonStyle.Link)
-                            .setURL(srv.inviteUrl)
-                            .setLabel(`${srv.guildName} | ${srv.botName || client.user.username}`);
-
-                        if (srv.emojiId) {
-                            btn.setEmoji(srv.emojiId);
-                        }
-
-                        currentRow.addComponents(btn);
-
-                        if (currentRow.components.length === 5 || index === supportServers.length - 1) {
-                            rows.push(currentRow);
-                            currentRow = new ActionRowBuilder();
-                        }
-                    });
-                }
-
-                await interaction.reply({
-                    embeds: [embed],
-                    components: rows,
-                    ephemeral: true
-                });
-            } else if (subcommand === 'link') {
-                const embed = new EmbedBuilder()
-                    .setColor('#2b2d31')
-                    .setTitle('🌐 المواقع والروابط المدعومة لنظام التخطي')
-                    .setDescription('قائمة بجميع خدمات واختصارات الروابط التي يدعم البوت تجاوزها تلقائياً:')
-                    .addFields(
-                        {
-                            name: '🔥 Popular Ad-link Services',
-                            value: '• Linkvertise.com\n• Admaven (Lootlabs.gg / Lootlinks.com)\n• Paster.so, Paster.gg\n• Work.ink (جميع النطاقات)\n• Cuty.io, Cety.io\n• Boost.ink\n• Lockr.so\n• Mendationforc.info',
-                            inline: false
-                        },
-                        {
-                            name: '🔓 Social Unlock Sites',
-                            value: '• Rekonise.com\n• Link-Unlock.com / Linkunlocker.com\n• Mboost.me, Bst.gg, Booo.st\n• Social-unlock.com / Socialwolvez.com\n• Sub2get.com / Sub2unlock.com / Sub2unlock.net\n• Sub4unlock.io / Subfinal.com\n• Unlocknow.net / Ytsubme.com',
-                            inline: false
-                        },
-                        {
-                            name: '📝 Paster Sites',
-                            value: '• Justpaste.it / Paste-drop.com\n• Pastebin.com / Pastecanyon.com\n• Pastehill.com / Pastemode.com\n• Rentry.org',
-                            inline: false
-                        },
-                        {
-                            name: '✂️ URL Shorteners',
-                            value: '• Bit.ly, Cl.gy, Goo.gl, Is.Gd\n• Rebrand.ly, Rkns.link, Shorter.me\n• T.co, T.ly, Tiny.cc, Tinylink.onl\n• Tinyurl.com, V.gd',
-                            inline: false
-                        }
-                    )
-                    .setFooter({ text: 'يمكنك إرسال أي رابط مدعوم أو استخدام الأمر /bypass لتخطيه مباشرة!' });
-
-                await interaction.reply({
-                    embeds: [embed],
-                    ephemeral: true
-                });
-            }
-        }
-
-        if (interaction.commandName === 'video') {
             const status = interaction.options.getString('downloader') || interaction.options.getSubcommand(false);
             const targetChannel = interaction.options.getChannel('channel') || interaction.channel;
 
             if (!db[interaction.guildId]) db[interaction.guildId] = {};
 
+        if (interaction.commandName === 'video') {
+            const status = interaction.options.getString('downloader');
+            const targetChannel = interaction.options.getChannel('channel');
             if (status === 'on') {
                 db[interaction.guildId].videoDownloader = {
                     enabled: true,
@@ -5457,10 +7505,188 @@ client.on('interactionCreate', async interaction => {
                     );
 
                 return await interaction.reply({
-                    components: [container],
-                    flags: MessageFlags.IsComponentsV2,
+                    components: [container.toJSON()],
+                    flags: [MessageFlags.IsComponentsV2],
                     ephemeral: true
                 }).catch(() => {});
+            }
+        }
+
+        if (interaction.commandName === 'forum') {
+            const subcommand = interaction.options.getSubcommand();
+            if (subcommand === 'script') {
+                const categoryChannel = interaction.options.getChannel('category');
+                const interval = parseInt(interaction.options.getString('interval') || '60');
+                const status = interaction.options.getBoolean('status') ?? true;
+
+                if (interval === 1 && !isGuildPremium(interaction.guildId)) {
+                    return interaction.reply({ content: '❌ **خيار "دقيقة واحدة" مخصص لمشتركي بريميوم فقط!**', ephemeral: true });
+                }
+
+                ensureGuildData(interaction.guildId);
+                const db = getDB();
+                if (!db[interaction.guildId].forumScript) db[interaction.guildId].forumScript = {};
+                
+                const fData = db[interaction.guildId].forumScript;
+                fData.enabled = status;
+                fData.categoryId = categoryChannel ? categoryChannel.id : null;
+                fData.interval = interval;
+                fData.lastPost = fData.lastPost || 0;
+
+                if (!status) {
+                    saveDB(db);
+                    return interaction.reply({ content: '✅ **تم تعطيل نظام المنتدى للسكربتات بنجاح.**', ephemeral: true });
+                }
+
+                await interaction.deferReply({ ephemeral: true });
+
+                try {
+                    // Create or find forum channel
+                    let forumChannel = interaction.guild.channels.cache.find(c => c.type === ChannelType.GuildForum && c.name.includes('ntl-scripts'));
+                    if (!forumChannel) {
+                        forumChannel = await interaction.guild.channels.create({
+                            name: '📜-ntl-scripts',
+                            type: ChannelType.GuildForum,
+                            parent: categoryChannel ? categoryChannel.id : null,
+                            topic: 'نظام نشر السكربتات التلقائي من بوت NTL',
+                            permissionOverwrites: [
+                                {
+                                    id: interaction.guild.id,
+                                    deny: [
+                                        PermissionFlagsBits.SendMessages,
+                                        PermissionFlagsBits.CreatePublicThreads,
+                                        PermissionFlagsBits.CreatePrivateThreads,
+                                        PermissionFlagsBits.SendMessagesInThreads,
+                                        PermissionFlagsBits.AddReactions
+                                    ],
+                                    allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory]
+                                }
+                            ]
+                        });
+                    } else if (categoryChannel) {
+                        await forumChannel.setParent(categoryChannel.id).catch(() => {});
+                    }
+                    fData.channelId = forumChannel.id;
+                    fData.threads = fData.threads || {};
+
+                    async function fetchGameImage(gameName) {
+                        try {
+                            const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36';
+                            const res = await axios.get(`https://scriptblox.com/api/script/search?q=${encodeURIComponent(gameName)}&page=1`, { 
+                                headers: { 'User-Agent': userAgent },
+                                timeout: 6000
+                            }).catch(() => null);
+
+                            const scripts = res?.data?.result?.scripts || [];
+                            for (const s of scripts) {
+                                if (s.game?.imageUrl && typeof s.game.imageUrl === 'string' && s.game.imageUrl.length > 5) {
+                                    return s.game.imageUrl.startsWith('http') ? s.game.imageUrl : `https://scriptblox.com${s.game.imageUrl}`;
+                                }
+                                if (s.image && typeof s.image === 'string' && s.image.length > 5) {
+                                    return s.image.startsWith('http') ? s.image : `https://scriptblox.com${s.image}`;
+                                }
+                            }
+                        } catch (e) {}
+
+                        const fallbackMap = {
+                            'Blox Fruits': 'https://scriptblox.com/images/games/bloxfruits.png',
+                            'Brookhaven RP': 'https://scriptblox.com/images/games/brookhaven.png',
+                            'Adopt Me!': 'https://scriptblox.com/images/games/adoptme.png',
+                            'Murder Mystery 2': 'https://scriptblox.com/images/games/mm2.png',
+                            'Pet Simulator 99': 'https://scriptblox.com/images/games/ps99.png',
+                            'Doors': 'https://scriptblox.com/images/games/doors.png',
+                            'BedWars': 'https://scriptblox.com/images/games/bedwars.png',
+                            'Arsenal': 'https://scriptblox.com/images/games/arsenal.png',
+                            'King Legacy': 'https://scriptblox.com/images/games/kinglegacy.png',
+                            'Bee Swarm Simulator': 'https://scriptblox.com/images/games/beeswarm.png',
+                            'Jailbreak': 'https://scriptblox.com/images/games/jailbreak.png',
+                            'Piggy': 'https://scriptblox.com/images/games/piggy.png',
+                            'Royale High': 'https://scriptblox.com/images/games/royalehigh.png',
+                            'Natural Disaster Survival': 'https://scriptblox.com/images/games/naturaldisaster.png',
+                            'Pls Donate': 'https://scriptblox.com/images/games/plsdonate.png'
+                        };
+                        return fallbackMap[gameName] || null;
+                    }
+
+                    // Create threads for each game if they don't exist
+                    const SCRIPT_FORUM_GAMES = [
+                        { name: 'Blox Fruits', fame: 'famous', description: 'Explore the vast seas and find mysterious fruits.', emoji: '🔥' },
+                        { name: 'Brookhaven RP', fame: 'famous', description: 'Live in a luxury home and hang out with friends.', emoji: '🏠' },
+                        { name: 'Adopt Me!', fame: 'famous', description: 'Raise pets and decorate your home.', emoji: '🥚' },
+                        { name: 'Murder Mystery 2', fame: 'famous', description: 'Solve the mystery and catch the murderer.', emoji: '🔪' },
+                        { name: 'Pet Simulator 99', fame: 'famous', description: 'Collect pets and earn coins.', emoji: '🐱' },
+                        { name: 'Doors', fame: 'medium', description: 'Find your way through a haunted hotel.', emoji: '🚪' },
+                        { name: 'BedWars', fame: 'medium', description: 'Defend your bed and destroy others.', emoji: '🛏️' },
+                        { name: 'Arsenal', fame: 'medium', description: 'Fast-paced shooter with various weapons.', emoji: '🔫' },
+                        { name: 'King Legacy', fame: 'medium', description: 'Action-adventure inspired by One Piece.', emoji: '👑' },
+                        { name: 'Bee Swarm Simulator', fame: 'medium', description: 'Grow your own swarm of bees.', emoji: '🐝' },
+                        { name: 'Jailbreak', fame: 'low', description: 'Live the life of a criminal or police officer.', emoji: '🚔' },
+                        { name: 'Piggy', fame: 'low', description: 'Escape the killer in this horror game.', emoji: '🐷' },
+                        { name: 'Royale High', fame: 'low', description: 'Dress up and go to school.', emoji: '🏰' },
+                        { name: 'Natural Disaster Survival', fame: 'low', description: 'Survive various natural disasters.', emoji: '🌪️' },
+                        { name: 'Pls Donate', fame: 'low', description: 'Donate and receive Robux.', emoji: '💸' }
+                    ];
+
+                    for (const game of SCRIPT_FORUM_GAMES) {
+                        const threadName = `${game.emoji} ${game.name}`;
+                        let thread = forumChannel.threads.cache.find(t => t.name === threadName);
+                        if (!thread) {
+                            const gameImg = await fetchGameImage(game.name);
+                            const embed = new EmbedBuilder()
+                                .setTitle(`🎮 **${game.name}**`)
+                                .setDescription(`${game.description}\n\n-# سيتم نشر سكربتات جديدة لهذا الماب هنا تلقائياً كل **${interval}** دقيقة.`)
+                                .setColor(0x2b2d31);
+                            
+                            if (gameImg) {
+                                embed.setImage(gameImg);
+                                embed.setThumbnail(gameImg);
+                            }
+
+                            thread = await forumChannel.threads.create({
+                                name: threadName,
+                                message: {
+                                    embeds: [embed]
+                                }
+                            });
+                        }
+                        fData.threads[game.name] = thread.id;
+                    }
+
+                    saveDB(db);
+                    return interaction.editReply({ content: `✅ **تم تفعيل نظام المنتدى بنجاح!**\nروم المنتدى: <#${forumChannel.id}>\nالمدة الزمنية: ${interval} دقيقة.` });
+                } catch (err) {
+                    console.error('[Forum Script Setup Error]:', err);
+                    return interaction.editReply({ content: `❌ **حدث خطأ أثناء إعداد المنتدى:** ${err.message}` });
+                }
+            }
+        }
+
+        if (interaction.commandName === 'trade') {
+            if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+                return interaction.reply({ content: '❌ هذا الأمر مخصص للإدارة فقط.', ephemeral: true });
+            }
+            const subcommand = interaction.options.getSubcommand();
+            if (subcommand === 'setup') {
+                const enabled = interaction.options.getBoolean('enabled');
+                const channel = interaction.options.getChannel('channel');
+                const logChannel = interaction.options.getChannel('log_channel');
+
+                ensureGuildData(interaction.guildId);
+                const db = getDB();
+                if (!db[interaction.guildId].trade) db[interaction.guildId].trade = {};
+                
+                db[interaction.guildId].trade.enabled = enabled;
+                if (channel) db[interaction.guildId].trade.channelId = channel.id;
+                if (logChannel) db[interaction.guildId].trade.logChannelId = logChannel.id;
+                saveDB(db);
+
+                return interaction.reply({
+                    content: `✅ **تم تحديث إعدادات نظام التبادل بنجاح!**\n` +
+                             `• **الحالة:** ${enabled ? 'مفعل ✅' : 'معطل ❌'}\n` +
+                             `• **روم التبادل:** ${db[interaction.guildId].trade.channelId ? `<#${db[interaction.guildId].trade.channelId}>` : 'غير محدد'}\n` +
+                             `• **روم السجلات:** ${db[interaction.guildId].trade.logChannelId ? `<#${db[interaction.guildId].trade.logChannelId}>` : 'غير محدد'}`,
+                    ephemeral: true
+                });
             }
         }
 
@@ -5476,6 +7702,72 @@ client.on('interactionCreate', async interaction => {
                 isInteraction: true,
                 interaction: interaction
             });
+        }
+
+        if (interaction.commandName === 'tickets') {
+            ensureGuildData(interaction.guildId);
+            const db = getDB();
+            if (!db[interaction.guildId].staffTickets) {
+                db[interaction.guildId].staffTickets = {};
+            }
+
+            const subcommand = interaction.options.getSubcommand(false);
+            const targetUser = interaction.options.getUser('user') || interaction.user;
+
+            if (subcommand === 'show' || !subcommand) {
+                const count = db[interaction.guildId].staffTickets[targetUser.id] || 0;
+                return await interaction.reply({
+                    content: `<:Ticket:1539415274741043230> |** لقد إستلم <@${targetUser.id}> \`${count}\` تذكرة**`
+                });
+            }
+
+            if (subcommand === 'add') {
+                if (!interaction.member?.permissions?.has(PermissionFlagsBits.Administrator)) {
+                    return await interaction.reply({
+                        content: '**<:No:1516534087161221233> | هذا الأمر مخصص فقط للإدارة (Administrator)!**',
+                        ephemeral: true
+                    });
+                }
+                const amount = interaction.options.getInteger('amount') || 1;
+                const current = db[interaction.guildId].staffTickets[targetUser.id] || 0;
+                const newCount = current + amount;
+                db[interaction.guildId].staffTickets[targetUser.id] = newCount;
+                saveDB(db);
+                return await interaction.reply({
+                    content: `<:Yea:1516534090751279257> |** تمت إضافة \`${amount}\` تذكرة إلى <@${targetUser.id}>. المجموع الآن: \`${newCount}\` تذكرة.**`
+                });
+            }
+
+            if (subcommand === 'remove') {
+                if (!interaction.member?.permissions?.has(PermissionFlagsBits.Administrator)) {
+                    return await interaction.reply({
+                        content: '**<:No:1516534087161221233> | هذا الأمر مخصص فقط للإدارة (Administrator)!**',
+                        ephemeral: true
+                    });
+                }
+                const amount = interaction.options.getInteger('amount') || 1;
+                const current = db[interaction.guildId].staffTickets[targetUser.id] || 0;
+                const newCount = Math.max(0, current - amount);
+                db[interaction.guildId].staffTickets[targetUser.id] = newCount;
+                saveDB(db);
+                return await interaction.reply({
+                    content: `<:Yea:1516534090751279257> |** تمت إزالة \`${amount}\` تذكرة من <@${targetUser.id}>. المجموع الآن: \`${newCount}\` تذكرة.**`
+                });
+            }
+
+            if (subcommand === 'reset') {
+                if (!interaction.member?.permissions?.has(PermissionFlagsBits.Administrator)) {
+                    return await interaction.reply({
+                        content: '**<:No:1516534087161221233> | هذا الأمر مخصص فقط للإدارة (Administrator)!**',
+                        ephemeral: true
+                    });
+                }
+                db[interaction.guildId].staffTickets[targetUser.id] = 0;
+                saveDB(db);
+                return await interaction.reply({
+                    content: `<:Yea:1516534090751279257> |** تم تصفير عدد تذاكر <@${targetUser.id}> بنجاح.**`
+                });
+            }
         }
     }
 
@@ -5525,8 +7817,8 @@ client.on('interactionCreate', async interaction => {
             );
 
         return await interaction.update({
-            components: [container],
-            flags: MessageFlags.IsComponentsV2
+            components: [container.toJSON()],
+            flags: [MessageFlags.IsComponentsV2]
         }).catch(() => {});
     }
 
@@ -5556,8 +7848,8 @@ client.on('interactionCreate', async interaction => {
             );
 
         return await interaction.reply({
-            components: [guideContainer],
-            flags: MessageFlags.IsComponentsV2,
+            components: [guideContainer.toJSON()],
+            flags: [MessageFlags.IsComponentsV2],
             ephemeral: true
         }).catch(() => {});
     }
@@ -5584,8 +7876,8 @@ client.on('interactionCreate', async interaction => {
         const container = buildScriptContainer(currentScript, cacheData.currentIndex, cacheData.scripts.length, msgId, cacheData.prefix);
 
         return await interaction.update({
-            components: [container],
-            flags: MessageFlags.IsComponentsV2
+            components: [container.toJSON()],
+            flags: [MessageFlags.IsComponentsV2]
         }).catch(() => {});
     }
 
@@ -5682,8 +7974,8 @@ client.on('interactionCreate', async interaction => {
                 await interaction.editReply({
                     content: null,
                     embeds: [],
-                    components: [container],
-                    flags: MessageFlags.IsComponentsV2
+                    components: [container.toJSON()],
+                    flags: [MessageFlags.IsComponentsV2]
                 });
             } else {
                 await player.play();
@@ -5695,8 +7987,8 @@ client.on('interactionCreate', async interaction => {
                 await interaction.editReply({
                     content: null,
                     embeds: [],
-                    components: [container],
-                    flags: MessageFlags.IsComponentsV2
+                    components: [container.toJSON()],
+                    flags: [MessageFlags.IsComponentsV2]
                 });
             }
 
@@ -5853,6 +8145,19 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply({ content: '❌ هذا الأمر والأزرار مخصصة فقط لمشرفي السيرفر (Administrator).', ephemeral: true });
         }
 
+        if (!isGuildPremium(interaction.guildId)) {
+            const btn = new ButtonBuilder()
+                .setEmoji('1511327391669026916')
+                .setStyle(ButtonStyle.Link)
+                .setURL('https://discord.gg/hBvzFrqQP2');
+            const row = new ActionRowBuilder().addComponents(btn);
+            return interaction.reply({
+                content: `**<:Premium:1520486329316671689> | ليس لديك بريميوم للشراء توجه إلى الدعم**`,
+                components: [row],
+                ephemeral: true
+            });
+        }
+
         // Authenticate creator of the /ai message
         const parts = interaction.customId.split('_');
         const authorId = parts[parts.length - 1];
@@ -5940,18 +8245,90 @@ client.on('interactionCreate', async interaction => {
             return await interaction.showModal(modal);
         }
 
-        // 2c. MODAL SUBMIT FOR PERSONALITY & INSTRUCTIONS
-        if (interaction.isModalSubmit() && interaction.customId.startsWith('ai_modal_manual_config_')) {
-            const personality = interaction.fields.getTextInputValue('ai_manual_personality');
-            const instructions = interaction.fields.getTextInputValue('ai_manual_instructions') || '';
+        // 2d. SET GEMINI API KEY BUTTON
+        if (interaction.isButton() && interaction.customId.startsWith('ai_set_gemini_key_')) {
+            const uId = interaction.user.id;
+            const modal = new ModalBuilder()
+                .setCustomId(`ai_modal_gemini_key_${uId}`)
+                .setTitle('تعيين مفتاح Gemini API الخاص بالسيرفر');
 
+            const input = new TextInputBuilder()
+                .setCustomId('ai_input_gemini_key')
+                .setLabel('مفتاح Gemini API (AIzaSy...)')
+                .setStyle(TextInputStyle.Short)
+                .setRequired(true)
+                .setPlaceholder('ألصق مفتاح Gemini API الخاص بسيرفرك هنا...');
+
+            modal.addComponents(new ActionRowBuilder().addComponents(input));
+            return await interaction.showModal(modal);
+        }
+
+        // 2e. MODAL SUBMIT FOR GEMINI API KEY
+        if (interaction.isModalSubmit() && interaction.customId.startsWith('ai_modal_gemini_key_')) {
+            const apiKey = interaction.fields.getTextInputValue('ai_input_gemini_key').trim();
+            ensureGuildData(interaction.guildId);
+            if (!db[interaction.guildId].ai) db[interaction.guildId].ai = {};
+            db[interaction.guildId].ai.geminiApiKey = apiKey;
+            saveDB(db);
+
+            // Update main embed if possible
+            try {
+                const aiData = db[interaction.guildId].ai;
+                const embed = EmbedBuilder.from(interaction.message.embeds[0]);
+                embed.setDescription(
+                    `**اسم الذكاء الاصطناعي <:Ai:1521447887756722196> :** ${aiData.name}\n` +
+                    `-#  ~~                                                                                                                                                                  ~~\n` +
+                    `**صورة الذكاء الاصطناعي <:Photo:1516575747425439975> :** ${aiData.avatar === 'غير محدد' ? 'غير محدد' : `[انقر لعرض الصورة](${aiData.avatar})`}\n` +
+                    `-#  ~~                                                                                                                                                                  ~~\n` +
+                    `**حالة الذكاء الاصطناعي <:Status:1521447885412237364> :** ${aiData.status}\n` +
+                    `-#  ~~                                                                                                                                                                  ~~\n` +
+                    `**روم الكلام مع الـai <:Hastag:1516365641823551528> :** ${aiData.channelId ? `<#${aiData.channelId}>` : 'غير محدد'}\n` +
+                    `-#  ~~                                                                                                                                                                  ~~\n` +
+                    `**كاتاجوري المساعد 📁 :** ${aiData.categoryId ? `<#${aiData.categoryId}>` : 'غير محدد'}\n` +
+                    `-#  ~~                                                                                                                                                                  ~~\n` +
+                    `**نوع التدريب <:training:1521452247270293524> :** ${aiData.trainingType === 'auto' ? 'تدريب تلقائي (نفسه)' : (aiData.trainingType === 'manual' ? 'تدريب يدوي' : 'غير محدد')}\n` +
+                    `-#  ~~                                                                                                                                                                  ~~\n` +
+                    `**مفتاح Gemini API الخاص 🔑 :** ${aiData.geminiApiKey ? 'مسجل ✅ (خاص بالسيرفر)' : 'غير مسجل (يستخدم الافتراضي)'}`
+                );
+                await interaction.message.edit({ embeds: [embed] }).catch(() => {});
+            } catch (e) {}
+
+            return await interaction.reply({
+                content: '✅ **تم حفظ وتحديث مفتاح Gemini API الخاص بهذا السيرفر بنجاح! سيتم استخدامه في جميع ردود الذكاء الاصطناعي.**',
+                ephemeral: true
+            });
+        }
+
+        // 2g. MODAL SUBMIT FOR MANUAL PERSONALITY CONFIG
+        if (interaction.isModalSubmit() && interaction.customId.startsWith('ai_modal_manual_config_')) {
+            const personality = interaction.fields.getTextInputValue('ai_manual_personality') || '';
+            const instructions = interaction.fields.getTextInputValue('ai_manual_instructions') || '';
+            
+            ensureGuildData(interaction.guildId);
+            if (!db[interaction.guildId].ai) db[interaction.guildId].ai = {};
             db[interaction.guildId].ai.personality = personality;
             db[interaction.guildId].ai.customInstructions = instructions;
             db[interaction.guildId].ai.trainingType = 'manual';
             saveDB(db);
 
             return await interaction.reply({
-                content: '✅ **تم حفظ شخصية البوت وطريقة كلامه وتعليماته المخصصة بالملي!**\nسيلتزم البوت بشخصيته وقواعده الجديدة تماماً وبكل دقة في جميع الردود.',
+                content: '✅ **تم حفظ وتحديث شخصية الذكاء الاصطناعي العامة وتعليماته بنجاح!**\n\n' +
+                         `• **الشخصية:** ${personality || 'تلقائي (طبيعي وعفوي)'}\n` +
+                         `• **التعليمات:** ${instructions || 'لا يوجد'}`,
+                ephemeral: true
+            });
+        }
+
+        // 2f. GEMINI GUIDE BUTTON
+        if (interaction.isButton() && interaction.customId.startsWith('ai_gemini_guide_')) {
+            return await interaction.reply({
+                content: `📖 **طريقة الحصول على مفتاح Gemini API مجاناً لكل سيرفر:**\n` +
+                         `1. انتقل إلى موقع Google AI Studio الرسمي عبر الرابط التالي:\n` +
+                         `🔗 https://aistudio.google.com/app/apikey\n` +
+                         `2. قم بتسجيل الدخول باستخدام حساب جوجل (Google Account).\n` +
+                         `3. انقر على زر **Create API key** (إنشاء مفتاح).\n` +
+                         `4. انسخ المفتاح الناتج وقم بلصقه هنا عبر الضغط على زر **مفتاح Gemini API** في لوحة إعدادات الذكاء الاصطناعي.\n` +
+                         `> **ملاحظة:** كل سيرفر يمكنه استخدام مفتاحه الخاص لتفادي حدود الاستهلاك (Rate Limit / Quota).`,
                 ephemeral: true
             });
         }
@@ -6550,7 +8927,7 @@ client.on('interactionCreate', async interaction => {
 
         await reviewChannel.send({
             components: [reviewContainer],
-            flags: MessageFlags.IsComponentsV2
+            
         }).catch(err => {
             console.error('Failed to send review to channel:', err);
         });
@@ -6610,10 +8987,17 @@ client.on('interactionCreate', async interaction => {
             const row = new ActionRowBuilder();
             if (panel.buttons && panel.buttons.length > 0) {
                 panel.buttons.slice(0, 5).forEach((b, idx) => {
+                    let btnStyle = ButtonStyle.Primary;
+                    const s = String(b.style || '').toLowerCase();
+                    if (s === 'success' || s === 'green' || s === '3') btnStyle = ButtonStyle.Success;
+                    else if (s === 'danger' || s === 'red' || s === '4') btnStyle = ButtonStyle.Danger;
+                    else if (s === 'secondary' || s === 'grey' || s === 'gray' || s === '2') btnStyle = ButtonStyle.Secondary;
+                    else if (s === 'link' || s === '5') btnStyle = ButtonStyle.Link;
+
                     const btn = new ButtonBuilder()
                         .setCustomId(`ticket_panel_btn_${pid}_${idx}`)
                         .setLabel(b.name)
-                        .setStyle(ButtonStyle.Primary);
+                        .setStyle(btnStyle);
                     if (b.emoji) btn.setEmoji(b.emoji);
                     row.addComponents(btn);
                 });
@@ -6692,12 +9076,14 @@ client.on('interactionCreate', async interaction => {
             }
         ];
 
-        if (panel.roles && panel.roles.length > 0) {
+        if (panel.roles && Array.isArray(panel.roles) && panel.roles.length > 0) {
             panel.roles.forEach(roleId => {
-                permissionOverwrites.push({
-                    id: roleId,
-                    allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.EmbedLinks]
-                });
+                if (roleId && typeof roleId === 'string' && roleId.length > 5) {
+                    permissionOverwrites.push({
+                        id: roleId,
+                        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.EmbedLinks]
+                    });
+                }
             });
         }
 
@@ -6734,22 +9120,17 @@ client.on('interactionCreate', async interaction => {
         };
         saveDB(db);
 
-        const welcomeText = (panel.welcome && typeof panel.welcome === 'string' && panel.welcome.trim().length > 0)
-            ? panel.welcome
-            : 'مرحباً بك في التذكرة! تفضل بكتابة استفسارك وسيقوم فريق الدعم بالرد عليك في أقرب وقت.';
-        const welcomeEmbed = new EmbedBuilder()
-            .setColor('#2b2d31')
-            .setTitle(`تذكرة جديدة | ${chName}`)
-            .setDescription(welcomeText)
-            .setFooter({ text: 'لإغلاق التذكرة، استخدم القائمة المنسدلة لإدارة التذكرة.' });
-        const displayWelcomeImgUrl = getAbsoluteUrl(panel.welcome_img || 'لايوجد');
-        if (displayWelcomeImgUrl && displayWelcomeImgUrl !== 'لايوجد' && displayWelcomeImgUrl.startsWith('http')) {
-            welcomeEmbed.setImage(displayWelcomeImgUrl);
-        }
+        const rolesArr = (panel.roles && Array.isArray(panel.roles) && panel.roles.length > 0)
+            ? panel.roles.filter(Boolean)
+            : (panel.supportRole ? [panel.supportRole] : []);
+        const supportMentions = rolesArr.length > 0 ? rolesArr.map(r => `<@&${r}>`).join(' | ') : '@طاقم الدعم';
 
-        const row = getTicketComponents({ id: ticketId, claimerId: null, guildId: interaction.guildId, panelId: pid }, interaction.guildId);
+        const welcomeContainer = buildWelcomeContainer(panel, chName, { id: ticketId, claimerId: null, guildId: interaction.guildId, panelId: pid }, interaction.user.id);
 
-        await ch.send({ content: `مرحباً بك <@${interaction.user.id}> | طاقم الدعم <@&${panel.roles?.[0] || ''}>`, embeds: [welcomeEmbed], components: row });
+        await ch.send({
+            components: [welcomeContainer.toJSON()],
+            flags: [MessageFlags.IsComponentsV2]
+        });
         await interaction.editReply({ content: `<:Hastag:1516365641823551528> | تم إنشاء تذكرتك بنجاح: ${ch}` });
 
         if (isSupportAiActive) {
@@ -6759,7 +9140,7 @@ client.on('interactionCreate', async interaction => {
                     const systemPrompt = `أنت "مساعد الدعم الفني الذكي" الخاص بسيرفر "${interaction.guild.name}".
 تلقيت للتو تذكرة جديدة تم فتحها بواسطة العضو <@${interaction.user.id}>.
 رحب بالعضو بحرارة بأسلوب أنيق ومباشر، واطلب منه كتابة تفاصيل استفساره أو طلبه لتقوم بإجابته أو ضبط وإعداد البوت له فوراً.`;
-                    const greeting = await callGroqAPI(systemPrompt, `العضو ${interaction.user.username} فتح تذكرة جديدة.`);
+                    const greeting = await callGeminiAPI(systemPrompt, `العضو ${interaction.user.username} فتح تذكرة جديدة.`, [], interaction.guildId);
                     if (greeting) {
                         await ch.send(greeting).catch(() => {});
                     }
@@ -6833,12 +9214,14 @@ client.on('interactionCreate', async interaction => {
             }
         ];
 
-        if (panel.roles && panel.roles.length > 0) {
+        if (panel.roles && Array.isArray(panel.roles) && panel.roles.length > 0) {
             panel.roles.forEach(roleId => {
-                permissionOverwrites.push({
-                    id: roleId,
-                    allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.EmbedLinks]
-                });
+                if (roleId && typeof roleId === 'string' && roleId.length > 5) {
+                    permissionOverwrites.push({
+                        id: roleId,
+                        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.EmbedLinks]
+                    });
+                }
             });
         }
 
@@ -6875,22 +9258,17 @@ client.on('interactionCreate', async interaction => {
         };
         saveDB(db);
 
-        const welcomeTextSelect = (panel.welcome && typeof panel.welcome === 'string' && panel.welcome.trim().length > 0)
-            ? panel.welcome
-            : 'مرحباً بك في التذكرة! تفضل بكتابة استفسارك وسيقوم فريق الدعم بالرد عليك في أقرب وقت.';
-        const welcomeEmbed = new EmbedBuilder()
-            .setColor('#2b2d31')
-            .setTitle(`تذكرة جديدة | ${chName}`)
-            .setDescription(welcomeTextSelect)
-            .setFooter({ text: 'لإغلاق التذكرة، استخدم القائمة المنسدلة لإدارة التذكرة.' });
-        const displayWelcomeImgUrl = getAbsoluteUrl(panel.welcome_img || 'لايوجد');
-        if (displayWelcomeImgUrl && displayWelcomeImgUrl !== 'لايوجد' && displayWelcomeImgUrl.startsWith('http')) {
-            welcomeEmbed.setImage(displayWelcomeImgUrl);
-        }
+        const rolesArrSelect = (panel.roles && Array.isArray(panel.roles) && panel.roles.length > 0)
+            ? panel.roles.filter(Boolean)
+            : (panel.supportRole ? [panel.supportRole] : []);
+        const supportMentionsSelect = rolesArrSelect.length > 0 ? rolesArrSelect.map(r => `<@&${r}>`).join(' | ') : '@طاقم الدعم';
 
-        const row = getTicketComponents({ id: ticketId, claimerId: null, guildId: interaction.guildId, panelId: pid }, interaction.guildId);
+        const welcomeContainerSelect = buildWelcomeContainer(panel, chName, { id: ticketId, claimerId: null, guildId: interaction.guildId, panelId: pid }, interaction.user.id);
 
-        await ch.send({ content: `مرحباً بك <@${interaction.user.id}> | طاقم الدعم <@&${panel.roles?.[0] || ''}>`, embeds: [welcomeEmbed], components: row });
+        await ch.send({
+            components: [welcomeContainerSelect.toJSON()],
+            flags: [MessageFlags.IsComponentsV2]
+        });
         await interaction.editReply({ content: `<:Hastag:1516365641823551528> | تم إنشاء تذكرتك بنجاح: ${ch}` });
 
         if (isSupportAiActiveSelect) {
@@ -6900,7 +9278,7 @@ client.on('interactionCreate', async interaction => {
                     const systemPrompt = `أنت "مساعد الدعم الفني لـ NTL BOT" في سيرفر "${interaction.guild.name}".
 تلقيت للتو تذكرة جديدة تم فتحها بواسطة العضو <@${interaction.user.id}>.
 رحب بالعضو بحرارة بأسلوب أنيق ومباشر كـ "مساعد الدعم الفني لـ NTL BOT"، واطلب منه كتابة تفاصيل استفساره أو طلبه لتقوم بإجابته أو ضبط وإعداد البوت له فوراً.`;
-                    const greeting = await callGroqAPI(systemPrompt, `العضو ${interaction.user.username} فتح تذكرة جديدة.`);
+                    const greeting = await callGeminiAPI(systemPrompt, `العضو ${interaction.user.username} فتح تذكرة جديدة.`, [], interaction.guildId);
                     if (greeting) {
                         await ch.send(greeting).catch(() => {});
                     }
@@ -6925,7 +9303,11 @@ client.on('interactionCreate', async interaction => {
             const em = new EmbedBuilder().setColor('#2b2d31').setDescription(`**إقتراح <:PErson:1516382944510607511>: <@${interaction.user.id}>**\n-#  ~~                                                                                                                                                                   ~~\n\n${text}`);
             const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('publish_suggestion_prompt_btn').setLabel('نشر إقتراح').setEmoji('1517591602049056829').setStyle(ButtonStyle.Success), new ButtonBuilder().setEmoji('1517590248501022791').setURL('https://discord.gg/qZtbA27mH2').setStyle(ButtonStyle.Link));
             const msg = await wh.send({ username: interaction.user.username, avatarURL: interaction.user.displayAvatarURL({ dynamic: true }), embeds: [em], components: [row], wait: true });
-            await msg.startThread({ name: `نقاش - اقتراح ${interaction.user.username}`, autoArchiveDuration: 1440 }).catch(()=>{});
+            const thread = await msg.startThread({ name: `نقاش - اقتراح ${interaction.user.username}`, autoArchiveDuration: 1440 }).catch(()=>{});
+            if (thread) {
+                // Ensure everyone can speak (by default they can, but we can try to force it if restricted)
+                await thread.members.add(interaction.user.id).catch(() => {});
+            }
             await interaction.editReply({ content: '✅ تم إرسال اقتراحك ونشره بنجاح!' });
         } catch(e) { console.error(e); await interaction.editReply({ content: '❌ حدث خطأ أثناء إرسال الاقتراح.' }); }
         return;
@@ -7012,6 +9394,7 @@ client.on('interactionCreate', async interaction => {
         const r = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId(`btn_opt_add_${pid}`).setLabel('إضافة زر').setEmoji('1516365643379773490').setStyle(ButtonStyle.Success),
             new ButtonBuilder().setCustomId(`btn_opt_remove_${pid}`).setLabel('إزالة زر').setEmoji('1516426882944467144').setStyle(ButtonStyle.Danger),
+            new ButtonBuilder().setCustomId(`btn_opt_color_${pid}`).setLabel('تغيير لون الزر').setEmoji('🎨').setStyle(ButtonStyle.Primary),
             new ButtonBuilder().setCustomId(`edit_panel_display_${pid}`).setLabel('تحديد العرض للزر').setEmoji('1517268988873277571').setStyle(ButtonStyle.Secondary)
         );
         await interaction.update({ content: '🎛 *اختر تعديل أزرار الدعم بالتذاكر:*', embeds: [], components: [r] });
@@ -7168,40 +9551,207 @@ client.on('interactionCreate', async interaction => {
         await updatePanelEmbed({ guildId: interaction.guildId, editReply: async d => { if (interaction.replied || interaction.deferred) return interaction.editReply(d).catch(()=>{}); else return interaction.reply({...d, fetchReply:true}).catch(()=>{}); }, replied: true }, pid);
     }
 
+    if (interaction.isButton() && interaction.customId.startsWith('btn_opt_color_')) {
+        const pid = interaction.customId.split('_')[3];
+        const panel = db[interaction.guildId]?.panels?.[pid];
+        if (!panel) return interaction.reply({ content: '❌ تعذر العثور على البانل.', ephemeral: true });
+        
+        if (!panel.buttons || panel.buttons.length === 0) {
+            return interaction.reply({ content: '❌ **لا يوجد أي أزرار مضافة في هذا البانل لتغيير لونها!**', ephemeral: true });
+        }
+        
+        const select = new StringSelectMenuBuilder()
+            .setCustomId(`btn_color_select_${pid}`)
+            .setPlaceholder('اختر الزر المراد تغيير لونه...');
+            
+        panel.buttons.forEach((b, idx) => {
+            select.addOptions({
+                label: b.name,
+                value: String(idx),
+                description: `اللون الحالي: ${b.style || 'Primary (أزرق)'}`
+            });
+        });
+        
+        const row = new ActionRowBuilder().addComponents(select);
+        await interaction.update({ content: '🎨 **اختر الزر الذي تريد تغيير لونه:**', components: [row] });
+    }
+
+    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('btn_color_select_')) {
+        const pid = interaction.customId.split('_')[3];
+        const btnIdx = interaction.values[0];
+        
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId(`set_btn_style_${pid}_${btnIdx}_Primary`).setLabel('أزرق (Primary)').setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId(`set_btn_style_${pid}_${btnIdx}_Success`).setLabel('أخضر (Success)').setStyle(ButtonStyle.Success),
+            new ButtonBuilder().setCustomId(`set_btn_style_${pid}_${btnIdx}_Danger`).setLabel('أحمر (Danger)').setStyle(ButtonStyle.Danger),
+            new ButtonBuilder().setCustomId(`set_btn_style_${pid}_${btnIdx}_Secondary`).setLabel('رمادي (Secondary)').setStyle(ButtonStyle.Secondary)
+        );
+        
+        await interaction.update({ content: '🎨 **اختر اللون الجديد للزر:**', components: [row] });
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith('set_btn_style_')) {
+        const parts = interaction.customId.split('_');
+        const pid = parts[3];
+        const btnIdx = parseInt(parts[4], 10);
+        const style = parts[5];
+        
+        const panel = db[interaction.guildId]?.panels?.[pid];
+        if (!panel || !panel.buttons || !panel.buttons[btnIdx]) return interaction.reply({ content: '❌ حدث خطأ، لم يتم العثور على الزر.', ephemeral: true });
+        
+        panel.buttons[btnIdx].style = style;
+        saveDB(db);
+        
+        await interaction.update({ content: `✅ **تم تغيير لون الزر "${panel.buttons[btnIdx].name}" إلى (${style}) بنجاح!**`, components: [] });
+        await updatePanelEmbed({ guildId: interaction.guildId, editReply: async d => { if (interaction.replied || interaction.deferred) return interaction.editReply(d).catch(()=>{}); else return interaction.reply({...d, fetchReply:true}).catch(()=>{}); }, replied: true }, pid);
+    }
+
     // 1. Claim Button Handler
-    if (interaction.isButton() && interaction.customId.startsWith('claim_') && !interaction.customId.startsWith('claim_request_')) {
+    if (interaction.isButton() && interaction.customId.startsWith('claim_') && !interaction.customId.startsWith('claim_accept_') && !interaction.customId.startsWith('claim_reject_') && !interaction.customId.startsWith('claim_request_')) {
         const tid = interaction.customId.split('_')[1];
         const { ticketInfo, panel, db: localDb } = getTicketHelper(interaction.guildId, interaction.channelId, tid);
         if (!ticketInfo) return interaction.reply({ content: '**<:No:1516534087161221233> | تعذر العثور على معلومات هذه التذكرة.**', ephemeral: true });
-
-        const isSupport = checkIsSupportMember(interaction.member, panel);
-        if (!isSupport) {
-            return interaction.reply({ content: '**<:No:1516534087161221233> | ليس لديك صلاحية استلام هذه التذكرة. هذا الخيار مخصص فقط لطاقم الدعم الفني.**', ephemeral: true });
-        }
 
         if (ticketInfo.creatorId && ticketInfo.creatorId === interaction.user.id) {
             return interaction.reply({ content: `**<:No:1516534087161221233> | لا يمكنك استلام تذكرتك الخاصة**`, ephemeral: true });
         }
 
+        const isSupport = checkIsSupportMember(interaction.member, panel);
+        const isAdmin = interaction.member.permissions && interaction.member.permissions.has(PermissionFlagsBits.Administrator);
+        if (!isSupport && !isAdmin) {
+            return interaction.reply({ content: '**<:No:1516534087161221233> | ليس لديك صلاحية استلام هذه التذكرة. هذا الخيار مخصص فقط لطاقم الدعم الفني.**', ephemeral: true });
+        }
+
         const currentClaimer = ticketInfo.claimerId;
-        if (currentClaimer === null) {
+        
+        if (!currentClaimer) {
+            // First Claim -> Direct
             ticketInfo.claimerId = interaction.user.id;
             saveDB(localDb);
-            const comps = getTicketComponents(ticketInfo, interaction.guildId);
-            await interaction.update({ components: comps });
-            
-            // Send components v2 claim message
-            await sendTicketActionLog(interaction.channel, interaction.user.id, 'claim', { tid: ticketInfo.id });
-        } else {
-            if (currentClaimer !== interaction.user.id && !interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-                return interaction.reply({ content: '**<:No:1516534087161221233> | لا يمكنك إلغاء استلام تذكرة مستلمة بواسطة عضو آخر.**', ephemeral: true });
-            }
+            await updateTicketWelcomeMessage(interaction.channel, ticketInfo, panel);
+
+            const claimContainer = new ContainerBuilder()
+                .setAccentColor(0x57f287)
+                .addTextDisplayComponents(td => td.setContent(
+                    `### <:claim:1516357850207879209> تم إستلام التذكرة\n` +
+                    `-#  ~~                                                                                                                                                                   ~~\n` +
+                    `• **مستلم التذكرة:** <@${interaction.user.id}>\n` +
+                    `-#  ~~                                                                                                                                                                   ~~`
+                ))
+                .addActionRowComponents(actionRow => 
+                    actionRow.setComponents(
+                        new ButtonBuilder()
+                            .setCustomId(`claim_${ticketInfo.id}`)
+                            .setLabel('طلب إستلام')
+                            .setEmoji('1516360207847129183')
+                            .setStyle(ButtonStyle.Secondary)
+                    )
+                );
+
+            return interaction.reply({
+                components: [claimContainer.toJSON()],
+                flags: [MessageFlags.IsComponentsV2]
+            }).catch(() => {});
+        } else if (currentClaimer === interaction.user.id) {
+            // Unclaim
             ticketInfo.claimerId = null;
             saveDB(localDb);
-            const comps = getTicketComponents(ticketInfo, interaction.guildId);
-            await interaction.update({ components: comps });
-            // On unclaim: Bot should not write anything in chat
+            await updateTicketWelcomeMessage(interaction.channel, ticketInfo, panel);
+            return interaction.reply({ content: '✅ **تم إلغاء استلام التذكرة بنجاح.**', ephemeral: true });
+        } else {
+            // Request Claim from current claimer
+            const line = '-#  ~~                                                                                                                                                                   ~~';
+            const requestText = `### <:Claimrequest:1516360207847129183> طلب إستلام تذكرة\n${line}\n• **المستلم الحالي:** <@${currentClaimer}>\n• **مقدم الطلب:** <@${interaction.user.id}>\n${line}`;
+
+            const claimReqContainer = new ContainerBuilder()
+                .setAccentColor(0x00d2ff)
+                .addTextDisplayComponents(td => td.setContent(requestText))
+                .addActionRowComponents(actionRow =>
+                    actionRow.setComponents(
+                        new ButtonBuilder()
+                            .setCustomId(`claim_accept_${ticketInfo.id}_${interaction.user.id}`)
+                            .setEmoji('1516534090751279257')
+                            .setStyle(ButtonStyle.Success),
+                        new ButtonBuilder()
+                            .setCustomId(`claim_reject_${ticketInfo.id}_${interaction.user.id}`)
+                            .setEmoji('1516534087161221233')
+                            .setStyle(ButtonStyle.Danger)
+                    )
+                );
+
+            await interaction.channel.send({
+                components: [claimReqContainer.toJSON()],
+                flags: [MessageFlags.IsComponentsV2]
+            }).catch(() => {});
+
+            return interaction.reply({ content: '✅ **تم إرسال طلب استلام التذكرة إلى المستلم الحالي بنجاح.**', ephemeral: true });
         }
+    }
+
+    // Claim Request Accept/Reject Handlers
+    if (interaction.isButton() && (interaction.customId.startsWith('claim_accept_') || interaction.customId.startsWith('claim_reject_'))) {
+        const isAccept = interaction.customId.startsWith('claim_accept_');
+        const parts = interaction.customId.split('_');
+        const tid = parts[2];
+        const requesterId = parts[3];
+
+        const { ticketInfo, panel, db: localDb } = getTicketHelper(interaction.guildId, interaction.channelId, tid);
+        if (!ticketInfo) return interaction.reply({ content: '**<:No:1516534087161221233> | تعذر العثور على معلومات هذه التذكرة.**', ephemeral: true });
+
+        const isCreator = ticketInfo.creatorId && interaction.user.id === ticketInfo.creatorId;
+        const isCurrentClaimer = ticketInfo.claimerId && interaction.user.id === ticketInfo.claimerId;
+        const isRequester = requesterId && interaction.user.id === requesterId;
+        const isAdmin = interaction.member.permissions && interaction.member.permissions.has(PermissionFlagsBits.Administrator);
+
+        // User requested: "الي يقبل فقط مستلم التذكرة" (Only the current claimer can accept)
+        // If it was not claimed yet, then maybe owner? But now first claim is direct.
+        // So this logic applies mostly for transfers.
+        if (!isCurrentClaimer && !isAdmin) {
+            return interaction.reply({ content: '**<:No:1516534087161221233> | هذا الطلب مخصص لمستلم التذكرة الحالي للقبول أو الرفض.**', ephemeral: true });
+        }
+
+        const line = '-#  ~~                                                                                                                                                                   ~~';
+        if (isAccept) {
+            ticketInfo.claimerId = requesterId;
+            saveDB(localDb);
+            await updateTicketWelcomeMessage(interaction.channel, ticketInfo, panel);
+
+            const acceptContainer = new ContainerBuilder()
+                .setAccentColor(0x57f287)
+                .addTextDisplayComponents(td => td.setContent(
+                    `### <:claim:1516357850207879209> تم إستلام التذكرة\n` +
+                    `${line}\n` +
+                    `• **مستلم التذكرة الجديد:** <@${requesterId}>\n` +
+                    `• **تمت الموافقة بواسطة:** <@${interaction.user.id}>\n` +
+                    `${line}`
+                ))
+                .addActionRowComponents(actionRow => 
+                    actionRow.setComponents(
+                        new ButtonBuilder()
+                            .setCustomId(`claim_${ticketInfo.id}`)
+                            .setLabel('طلب إستلام')
+                            .setEmoji('1516360207847129183')
+                            .setStyle(ButtonStyle.Secondary)
+                    )
+                );
+
+            await interaction.update({
+                components: [acceptContainer.toJSON()],
+                flags: [MessageFlags.IsComponentsV2]
+            }).catch(() => {});
+        } else {
+            const rejectContainer = new ContainerBuilder()
+                .setAccentColor(0xed4245)
+                .addTextDisplayComponents(td => td.setContent(
+                    `### <:No:1516534087161221233> تم رفض طلب استلام التذكرة\n${line}\n• **مقدم الطلب:** <@${requesterId}>\n• **تم الرفض بواسطة:** <@${interaction.user.id}>\n${line}`
+                ));
+
+            await interaction.update({
+                components: [rejectContainer.toJSON()],
+                flags: [MessageFlags.IsComponentsV2]
+            }).catch(() => {});
+        }
+        return;
     }
 
     if (interaction.isButton() && interaction.customId.startsWith('claim_request_')) {
@@ -7222,24 +9772,31 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply({ content: '❌ أنت مستلم هذه التذكرة بالفعل!', ephemeral: true });
         }
 
-        ticketInfo.claimerId = interaction.user.id;
-        saveDB(localDb);
+        const line = '-#  ~~                                                                                                                                                                   ~~';
+        const requestText = `### <:Claimrequest:1516360207847129183> طلب إستلام تذكرة\n${line}\n• **مستلم التذكرة:** ${ticketInfo.claimerId ? `<@${ticketInfo.claimerId}>` : 'لا أحد'}\n• **طلب الإستلام:** <@${interaction.user.id}>\n${line}`;
 
-        const comps = getTicketComponents(ticketInfo, interaction.guildId);
-        await interaction.message.edit({ components: [] }).catch(() => {}); // disable or remove buttons from the old message
+        const claimReqContainer = new ContainerBuilder()
+            .setAccentColor(0x00d2ff)
+            .addTextDisplayComponents(td => td.setContent(requestText))
+            .addActionRowComponents(actionRow =>
+                actionRow.setComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`claim_accept_${ticketInfo.id}_${interaction.user.id}`)
+                        .setEmoji('1516534090751279257')
+                        .setStyle(ButtonStyle.Success),
+                    new ButtonBuilder()
+                        .setCustomId(`claim_reject_${ticketInfo.id}_${interaction.user.id}`)
+                        .setEmoji('1516534087161221233')
+                        .setStyle(ButtonStyle.Danger)
+                )
+            );
 
-        await sendTicketActionLog(interaction.channel, interaction.user.id, 'claim', { tid: ticketInfo.id });
+        await interaction.channel.send({
+            components: [claimReqContainer.toJSON()],
+            flags: [MessageFlags.IsComponentsV2]
+        });
 
-        // Update the welcome embed components
-        try {
-            const welcomeMsgs = await interaction.channel.messages.fetch({ limit: 50 });
-            const welcomeMsg = welcomeMsgs.find(m => m.author.id === client.user.id && m.embeds.some(e => e.title && e.title.includes('تذكرة جديدة')));
-            if (welcomeMsg) {
-                await welcomeMsg.edit({ components: comps }).catch(() => {});
-            }
-        } catch (err) {}
-
-        await interaction.reply({ content: '✅ تم نقل استلام التذكرة إليك بنجاح!', ephemeral: true });
+        await interaction.reply({ content: '✅ **تم إرسال طلب استلام التذكرة إلى صاحب التذكرة بنجاح.**', ephemeral: true });
     }
 
     // 2. Ticket Management Dropdown Handler
@@ -7493,9 +10050,7 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isButton() && interaction.customId.startsWith('del_confirm_')) {
         await interaction.deferUpdate().catch(() => {});
         const tid = interaction.customId.split('_')[2];
-        const localDb = getDB();
-        const tickets = localDb[interaction.guildId]?.tickets || {};
-        const ticketInfo = tickets[tid];
+        const { ticketInfo, db: localDb } = getTicketHelper(interaction.guildId, interaction.channelId, tid);
         
         if (ticketInfo) {
             const creatorId = ticketInfo.creatorId;
@@ -7503,6 +10058,15 @@ client.on('interactionCreate', async interaction => {
             const createdAt = ticketInfo.createdAt;
             const closedAt = Date.now();
             const closerId = interaction.user.id;
+            
+            // Count ticket for staff claimer (if still claimed when closed)
+            if (claimerId && !ticketInfo.counted) {
+                ticketInfo.counted = true;
+                if (!localDb[interaction.guildId]) localDb[interaction.guildId] = {};
+                if (!localDb[interaction.guildId].staffTickets) localDb[interaction.guildId].staffTickets = {};
+                localDb[interaction.guildId].staffTickets[claimerId] = (localDb[interaction.guildId].staffTickets[claimerId] || 0) + 1;
+                saveDB(localDb);
+            }
             
             const ticketNumberStr = ticketInfo.ticketNum || (interaction.channel?.name ? (interaction.channel.name.match(/\d+/) ? interaction.channel.name.match(/\d+/)[0] : tid) : tid);
             const channelName = `ticket-${ticketNumberStr}`;
@@ -7749,41 +10313,40 @@ async function applyReactionToMessage(message, reactionEmoji) {
 }
 
 function buildAISystemPrompt(guild, aiConfig, isAdmin) {
-    let prompt = `أنت عضو وإنسان طبيعي ذكي جداً وعفوي تعيش وتتحدث في سيرفر ديسكورد اسمه "${guild.name}".\n`;
-    prompt += `اسمك الحالي والشخصي في السيرفر هو: "${aiConfig.name || 'NTL Bot'}".\n\n`;
+    let prompt = `أنت مساعد ذكي، طبيعي جداً، عفوي ومباشر. تحدث كإنسان حقيقي وبراحتك تماماً.\n`;
+    prompt += `اسمك الحالي: "${aiConfig.name || 'NTL Bot'}".\n\n`;
     
-    prompt += `الشخصية واللهجة وطريقة الكلام (توجيهات صارمة وتطبيق بالملي):\n`;
+    prompt += `[قواعد حاسمة وإلزامية في الأسلوب وطريقة الكلام - التزام صارم]:\n`;
+    prompt += `1. **تكلم بلهجة "مكس" (سعودي، شامي، عراقي)**: تكلم بلهجة عامية بحتة ومزيج من هذه اللهجات الثلاث. استخدم كلمات شعبية ما يعرفها إلا "ولاد البلد" (مثل: وش دعوة، شكو ماكو، شو القصة، يا بعد حيي، عيوني أنت، لسا، هيك، يا زلمة).\n`;
+    prompt += `2. **منع الفصحى منعاً باتاً**: يمنع منعاً باتاً استخدام أي كلمة باللغة العربية الفصحى أو الكلمات "المثقفة" الزائدة. تحدث بأسلوب شوارعي نظيف وعفوي جداً.\n`;
+    prompt += `3. **الاختصار الذكي (سطر إلى 3 أسطر)**: اجعل ردودك مختصرة ومفيدة جداً. اكتفِ بالشرح في سطر أو سطرين، وبحد أقصى 3 أسطر فقط. لا تطل الكلام أبداً.\n`;
+    prompt += `4. **استخدام الإيموجيات**: استعمل الإيموجيات (العادية أو الخاصة بالسيرفر) بشكل طبيعي وجذاب في ثنايا كلامك لإضفاء روح على المحادثة.\n`;
+    prompt += `5. **الدخول في صلب الموضوع**: أجب مباشرة وبدون مقدمات رسمية مملة أو تحيات مكررة.\n`;
+    
     if (!aiConfig.trainingType) {
-        prompt += `1. شخصيتك هي: ذكاء اصطناعي ذكي، طريف، عالي اللباقة، سريع البديهة وعفوي.\n`;
-        prompt += `2. تتحدث بأسلوب عربي عامي راقٍ يدمج اللمسات الدافئة والأنيقة من اللهجتين الخليجية والشامية (مثل: "يا هلا والله"، "أبشر بالخير"، "من عيوني"، "تكرم عينك"، "وش تامر عليه يا الغالي").\n`;
-        prompt += `3. أجب بذكاء واختصار مفيد، وتفاعل بأسلوب ودي وعصري مع الأعضاء.\n\n`;
+        prompt += `6. تتحدث بأسلوب "مكس" عامي عراقي وسعودي وشامي، سريع البديهة وبدون رسميات.\n\n`;
     } else if (aiConfig.trainingType === 'manual') {
-        prompt += `لقد قام مشرف/مالك السيرفر بتحديد شخصيتك وطريقة كلامك يدوياً، وتلتزم بها بذكاء واحترافية فائقة دون أي انحراف:\n`;
-        prompt += `[الشخصية وطريقة الكلام المحددة بالملي]:\n${aiConfig.personality || 'شخص ذكي، محترم، هادئ ومفيد.'}\n\n`;
+        prompt += `[الشخصية والتعليمات المحددة يدوياً]:\n${aiConfig.personality || 'شخص ذكي، طبيعي، عفوي ومفيد.'}\n\n`;
         if (aiConfig.customInstructions) {
-            prompt += `[التعليمات والقواعد الخاصة بالسيرفر التي يجب تطبيقها بالملي]:\n${aiConfig.customInstructions}\n\n`;
+            prompt += `[التعليمات الخاصة]:\n${aiConfig.customInstructions}\n\n`;
         }
-        prompt += `1. التزم بالتعليمات والشخصية أعلاه بدقة عالية وبكل ذكاء واحترافية وفق ما يطلبه المستخدم تماماً.\n`;
-        prompt += `2. الإجابة تكون واضحة، دقيقة، ومفيدة وتفي بغرض السؤال كلياً.\n\n`;
     } else {
-        prompt += `1. شخصيتك هي: شخص ذكي، مرح، نشيط، محترم، عصري وسريع البديهة!\n`;
-        prompt += `2. تتحدث بلهجة عربية عامية سلسة وجذابة تجمع بين اللهجة الخليجية الدافئة واللهجة الشامية الأنيقة (مثل: "يا هلا والله"، "أبشر بالخير"، "من عيوني"، "تكرم عينك"، "منور السيرفر").\n`;
-        prompt += `3. أجب بذكاء وفطنة، وتجنب الردود الآلية المكررة والجافة.\n\n`;
+        prompt += `3. تتحدث بأسلوب "مكس" عامي عراقي وسعودي وشامي.\n\n`;
     }
 
     prompt += `استخدام الإيموجيات والرياكشن:\n`;
-    prompt += `1. يمكنك التفاعل بوضع رياكشن بالرموز التعبيرية على رسالة العضو بإضافة هذا السطر تماماً في نهاية رسالتك: [REACTION: ايموجي] (مثال: [REACTION: 👍] أو [REACTION: 😂] أو [REACTION: ❤️]).\n`;
+    prompt += `1. يمكنك التفاعل بوضع رياكشن بالرموز التعبيرية على رسالة العضو بإضافة هذا السطر تماماً في نهاية رسالتك: [REACTION: ايموجي] (مثال: [REACTION: 👍] أو [REACTION: 😂]).\n`;
 
     if (guild.emojis && guild.emojis.cache.size > 0) {
-        prompt += `2. إيموجيات السيرفر المخصصة التي يمكنك استخدامها هكذا في ردودك للتعبير (انسخ الرمز بالكامل ومغلق دون تعديل): \n`;
-        guild.emojis.cache.first(35).forEach(e => {
+        prompt += `2. إيموجيات السيرفر المتاحة:\n`;
+        guild.emojis.cache.first(25).forEach(e => {
             prompt += `- <:${e.name}:${e.id}>\n`;
         });
         prompt += `\n`;
     }
 
     if (aiConfig.knowledge && aiConfig.knowledge.length > 0) {
-        prompt += `معلومات خاصة وقواعد للسيرفر تلتزم بها:\n`;
+        prompt += `معلومات خاصة بالسيرفر تلتزم بها:\n`;
         aiConfig.knowledge.forEach((k, idx) => {
             prompt += `${idx + 1}. ${k}\n`;
         });
@@ -7791,8 +10354,8 @@ function buildAISystemPrompt(guild, aiConfig, isAdmin) {
     }
     
     if (isAdmin) {
-        prompt += `⚠️ المستخدم الحالي هو مسؤول (Administrator) في السيرفر وله كامل الصلاحيات الإدارية.\n`;
-        prompt += `إذا طلب منك إجراءً إدارياً، وافق فوراً واكتب كود الإجراء في نهاية ردك:\n`;
+        prompt += `المستخدم الحالي هو مسؤول (Administrator) في السيرفر.\n`;
+        prompt += `إذا طلب منك إجراءً إدارياً، نفذه واكتب كود الإجراء في نهاية ردك:\n`;
         prompt += `- [ACTION: GIVE_ROLE user:"USER_ID_OR_NAME" role:"ROLE_ID_OR_NAME"]\n`;
         prompt += `- [ACTION: REMOVE_ROLE user:"USER_ID_OR_NAME" role:"ROLE_ID_OR_NAME"]\n`;
         prompt += `- [ACTION: HIDE_CHANNEL] / [ACTION: SHOW_CHANNEL]\n`;
@@ -7800,13 +10363,11 @@ function buildAISystemPrompt(guild, aiConfig, isAdmin) {
         prompt += `- [ACTION: DELETE_CHANNEL name:"اسم القناة"]\n`;
         prompt += `- [ACTION: CREATE_ROLE name:"اسم الرتبة"]\n`;
         prompt += `- [ACTION: DELETE_ROLE name:"اسم الرتبة"]\n\n`;
-    } else {
-        prompt += `المستخدم الحالي عضو عادي ولا يمكنك تنفيذ إجراءات إدارية له.\n\n`;
     }
     
     prompt += `قواعد عامة حاسمة:\n`;
     prompt += `1. يمنع منشن الجميع (@everyone / @here) مطلقاً.\n`;
-    prompt += `2. ⚠️ **قاعدة حاسمة ومطلقة**: يمنع منعاً باتاً ونهائياً إعطاء مخرجات تحتوي على سياق الدردشة أو عناوين مثل "سجل الحوار" أو "آخر دردشة" أو "أنت (NTL BOT)". أرسل ردك المباشر والنهائي فقط الموجه للعضو!\n\n`;
+    prompt += `2. يمنع منعاً باتاً طباعة سياق الدردشة أو عناوين التنسيق الداخلي. أرسل ردك المباشر والنهائي فقط.\n\n`;
     
     return prompt;
 }
@@ -8120,8 +10681,9 @@ async function handleSupportAiInTicketMessage(message, ticket) {
     if (panel.aiPersonality) {
         systemPrompt += `• أسلوب وشخصية المحادثة لهذه التذكرة:\n${panel.aiPersonality}\n`;
     } else {
-        systemPrompt += `• أسلوب الكلام: تحدث بلباقة، احترام، ذكاء، وااحترافية عالية باللغة العربية مع العضو <@${message.author.id}> بأسلوب دمث وخليجي/شامي أنيق.\n`;
+        systemPrompt += `• أسلوب الكلام: تحدث بأسلوب طبيعي جداً، عفوي، وبراحتك تماماً بلهجة عامية "مكس" (عراقي، سعودي، شامي). ممنوع الفصحى نهائياً. استخدم كلمات شعبية وكن صديقاً للعضو وابتعد عن الرسميات.\n`;
     }
+    systemPrompt += `• قوانين الرد حاسمة: يمنع تجاوز الرد لـ 3 أسطر كحد أقصى. اكتفِ بسطر أو سطرين للشرح. استعمل الإيموجيات بشكل طبيعي وجذاب في كلامك. ممنوع الفصحى.\n`;
     if (panel.aiInstructions) {
         systemPrompt += `• التعليمات والقواعد الخاصة والتدريبية لهذه التذكرة (تلتزم بها بالملي):\n${panel.aiInstructions}\n\n`;
     }
@@ -8147,7 +10709,7 @@ async function handleSupportAiInTicketMessage(message, ticket) {
     systemPrompt += `⚠️ **قوانين صارمة وحاسمة لتفادي الأخطاء:**\n`;
     systemPrompt += `1. **يُمنع منعاً باتاً تكرار الترحيب** أو القول "يا هلا ومرحبتين" أو منشن العضو في كل رسالة! رحب بالعضو مرة واحدة فقط في البداية، وفي بقية المحادثة ادخل في صلب الموضوع مباشرة دون أي ترحيب مكرر.\n`;
     systemPrompt += `2. **تلتزم بالتعليمات التدريبية المحددة لك بالملي** إذا زودتك الإدارة بتعليمات خاصة (مثلاً: إذا طلب العضو شراء رتبة وجهه لـ #الأسعار، أو إذا طلب رابط اعطه الرابط)، أجب بدقة وطبق القاعدة بالملي.\n`;
-    systemPrompt += `3. **تنفيذ الإجراءات البرمجية [ACTION: ...]**: عند الحاجة لتنفيذ أمر برمجياً، ادرج الكود المناسب بنهاية ردك ليتم تنفيذه فعلياً:\n`;
+    systemPrompt += `3. **تنفيذ الإجراءات البرمجية [ACTION: ...]**: عند الحاجة لتنفيذ أمر برمجياً بناءً على طلب صريح وواضح من المستخدم، ادرج الكود المناسب بنهاية ردك. هام جدا: يمنع منعا باتا كتابة أكواد ACTION في الردود العادية أو الاستفسارات:\n`;
     systemPrompt += `   - [ACTION: CREATE_TICKET_PANEL channel:"CHANNEL_ID" role:"ROLE_ID" title:"عنوان البانل"]\n`;
     systemPrompt += `   - [ACTION: SETUP_AZKAR guild:"GUILD_ID" channel:"CHANNEL_ID" interval:"MINUTES"]\n`;
     systemPrompt += `   - [ACTION: CLOSE_TICKET]\n`;
@@ -8174,7 +10736,7 @@ async function handleSupportAiInTicketMessage(message, ticket) {
     const userPrompt = `${chatHistoryText}\n\nالرسالة الجديدة من العضو ${message.author.username} (<@${message.author.id}>):\n${message.content}`;
 
     try {
-        const rawResponse = await callGroqAPI(systemPrompt, userPrompt, imageParts);
+        const rawResponse = await callGeminiAPI(systemPrompt, userPrompt, imageParts, message.guildId);
         const { cleanText, actions, reactions } = cleanAiResponseOutput(rawResponse, message.guild);
 
         if (cleanText) {
@@ -8236,136 +10798,55 @@ async function handleSupportAiInTicketMessage(message, ticket) {
     }
 }
 
-async function callGroqAPI(systemPrompt, userPrompt, imageParts = []) {
-    const geminiParts = [...imageParts, { text: userPrompt }];
-
-    const rawKeys = [
-        GEMINI_API_KEY,
-        "AQ.Ab8RN6KVozdbkJNadA1PQhJIQDw4RG2dtFbL0QJ_lE1B7T3uSQ",
-        "AQ.Ab8RN6KtZV-aITY38VEBjKJNUiShcMJPuYXJrg9xrLi4OyKaeQ",
-        process.env.GEMINI_API_KEY_2
-    ];
-    const geminiKeys = [];
-    for (let i = 0; i < rawKeys.length; i++) {
-        const k = rawKeys[i];
-        if (k && typeof k === 'string' && k.length > 10 && !geminiKeys.includes(k)) {
-            geminiKeys.push(k);
-        }
+async function callGeminiAPI(systemPrompt, userPrompt, imageParts = [], guildId = null) {
+    const db = getDB();
+    let API_KEY = GEMINI_API_KEY;
+    if (guildId && db[guildId]?.ai?.geminiApiKey) {
+        API_KEY = db[guildId].ai.geminiApiKey;
+    } else if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "MY_GEMINI_API_KEY" && process.env.GEMINI_API_KEY !== "ضع_مفتاح_جيميني_هنا") {
+        API_KEY = process.env.GEMINI_API_KEY;
     }
 
-    const geminiModels = [
-        "gemini-2.5-flash",
-        "gemini-2.0-flash",
-        "gemini-2.0-flash-lite"
-    ];
+    const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${API_KEY}`;
 
-    const providers = [];
-
-    // 1. Google AI Gemini (Multiple Keys x Multiple Models)
-    for (let kIdx = 0; kIdx < geminiKeys.length; kIdx++) {
-        const key = geminiKeys[kIdx];
-        for (const model of geminiModels) {
-            providers.push({
-                name: `Google AI (${model} - Key #${kIdx + 1})`,
-                fn: async () => {
-                    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
-                    const body = JSON.stringify({
-                        systemInstruction: { parts: [{ text: systemPrompt }] },
-                        contents: [{ parts: geminiParts }],
-                        generationConfig: { temperature: 0.7, maxOutputTokens: 1024 }
-                    });
-                    const res = await httpRequest(url, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
-                    }, body);
-                    if (res.statusCode !== 200) throw new Error(`Status ${res.statusCode}: ${res.data}`);
-                    const json = JSON.parse(res.data);
-                    if (json.candidates && json.candidates[0]?.content?.parts?.[0]?.text) {
-                        return json.candidates[0].content.parts[0].text;
+    try {
+        const response = await axios.post(
+            API_URL,
+            {
+                contents: [
+                    {
+                        parts: [
+                            { text: `${systemPrompt}\n\n${userPrompt}` }
+                        ]
                     }
-                    throw new Error(`Invalid schema: ${res.data}`);
-                }
-            });
-        }
-    }
-
-    // 2. Groq API (if available)
-    const groqKey = process.env.GROQ_API_KEY;
-    if (groqKey && groqKey.length > 5) {
-        providers.push({
-            name: "Groq AI (Llama 3.3 70B)",
-            fn: async () => {
-                const url = `https://api.groq.com/openai/v1/chat/completions`;
-                const body = JSON.stringify({
-                    model: 'llama-3.3-70b-versatile',
-                    messages: [
-                        { role: 'system', content: systemPrompt },
-                        { role: 'user', content: userPrompt }
-                    ],
+                ],
+                generationConfig: {
                     temperature: 0.7,
-                    max_tokens: 1024
-                });
-                const res = await httpRequest(url, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${groqKey}`,
-                        'Content-Type': 'application/json',
-                        'Content-Length': Buffer.byteLength(body)
-                    }
-                }, body);
-                if (res.statusCode !== 200) throw new Error(`Status ${res.statusCode}: ${res.data}`);
-                const json = JSON.parse(res.data);
-                if (json.choices && json.choices[0]?.message?.content) {
-                    return json.choices[0].message.content;
+                    maxOutputTokens: 1024
                 }
-                throw new Error(`Groq error: ${res.data}`);
-            }
-        });
-    }
-
-    // 3. Cloudflare Workers AI (Last Emergency Backup)
-    providers.push({
-        name: "Cloudflare AI (Llama 3.1 8B - Backup)",
-        fn: async () => {
-            if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_API_TOKEN || CLOUDFLARE_API_TOKEN === 'ضع_توكن_كلاود_فلير_هنا') {
-                throw new Error("Cloudflare AI is not configured.");
-            }
-            const url = `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/run/@cf/meta/llama-3.1-8b-instruct`;
-            const body = JSON.stringify({
-                messages: [
-                    { role: 'system', content: systemPrompt },
-                    { role: 'user', content: userPrompt }
-                ]
-            });
-            const res = await httpRequest(url, {
-                method: 'POST',
+            },
+            {
                 headers: {
-                    'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
-                    'Content-Type': 'application/json',
-                    'Content-Length': Buffer.byteLength(body)
-                }
-            }, body);
-            if (res.statusCode !== 200) throw new Error(`Status ${res.statusCode}: ${res.data}`);
-            const json = JSON.parse(res.data);
-            if (json.success && json.result && json.result.response) {
-                return json.result.response;
+                    "Content-Type": "application/json",
+                    "User-Agent": "aistudio-build"
+                },
+                timeout: 30000
             }
-            throw new Error(`Cloudflare error: ${JSON.stringify(json.errors || json)}`);
-        }
-    });
+        );
 
-    for (const provider of providers) {
-        try {
-            console.log(`[AI Pipeline] Trying ${provider.name}...`);
-            const response = await provider.fn();
-            console.log(`[AI Pipeline] Success with ${provider.name}!`);
-            return response;
-        } catch (error) {
-            console.warn(`[AI Pipeline] ${provider.name} failed: ${error.message}`);
+        if (response.data && response.data.candidates && response.data.candidates[0]?.content?.parts?.[0]?.text) {
+            let content = response.data.candidates[0].content.parts[0].text;
+            // Strip any thinking blocks that might leak (just in case)
+            content = content.replace(/<think>[\s\S]*?<\/think>/gi, '');
+            content = content.replace(/^Thinking Process:[\s\S]*?(\n\n|$)/gi, '');
+            content = content.replace(/^\*\*Thinking Process:\*\*[\s\S]*?(\n\n|$)/gi, '');
+            return content.trim();
         }
+        throw new Error("Invalid response from Gemini AI");
+    } catch (error) {
+        console.error("[AI Engine Error]:", error.message);
+        return `❌ حدث خطأ في محرك الذكاء الاصطناعي: ${error.message}`;
     }
-
-    throw new Error("جميع مزودي الذكاء الاصطناعي (Google AI / Groq / Cloudflare) فشلوا في توليد الإجابة.");
 }
 
 function generateTranscriptHTML(ticketInfo, channelName) {
@@ -8548,7 +11029,18 @@ function generateTranscriptHTML(ticketInfo, channelName) {
             border-radius: 4px;
             border: 1px solid #3f4147;
         }
-    </style>
+      /* Global Glass Style */
+    .module-tab, .bg-slate-800, .bg-slate-900, .bg-slate-950, aside, nav {
+      background: rgba(15, 23, 42, 0.7) !important;
+      backdrop-filter: blur(16px) !important;
+      border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    }
+    button:not(.no-glass), .btn, input, select, textarea {
+      background: rgba(255, 255, 255, 0.05) !important;
+      backdrop-filter: blur(8px) !important;
+      border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    }
+  </style>
 </head>
 <body>
     <div class="container">
@@ -8566,7 +11058,7 @@ function generateTranscriptHTML(ticketInfo, channelName) {
 }
 
 function tryGeminiFallback(systemPrompt, userPrompt, resolve, reject) {
-    callGroqAPI(systemPrompt, userPrompt).then(resolve).catch(reject);
+    callGeminiAPI(systemPrompt, userPrompt).then(resolve).catch(reject);
 }
 
 // ==========================================

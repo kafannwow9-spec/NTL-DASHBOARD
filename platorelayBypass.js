@@ -808,6 +808,20 @@ class PlatoRelayClient {
         const needsCaptcha = msg.includes('captcha');
         const alreadyExists = msg.includes('already exists');
 
+        if (needsCaptcha) {
+            console.log(`[PlatoRelay] Debug: Captcha requested by server. Attempting quick programmatic bypass...`);
+            // Attempt to solve it immediately with a quick shape solver
+            try {
+                const quickToken = await solveShapeCaptcha(CAPTCHA_ORIGIN_DEFAULT, 3, 5);
+                if (quickToken) {
+                    console.log(`[PlatoRelay] Quick captcha token obtained, retrying step...`);
+                    return this.step(service, quickToken, hashToken);
+                }
+            } catch (e) {
+                console.log(`[PlatoRelay] Quick captcha bypass failed: ${e.message}`);
+            }
+        }
+
         if (data.success) {
             const inner = data.data || data;
             let stepUrl = null;
@@ -850,10 +864,14 @@ async function fetchKey(urlOrTicket) {
             for (let attempt = 0; attempt < 6; attempt++) {
                 stepRes = await client.step(service, captchaToken);
                 if (stepRes.needsCaptcha) {
+                    console.log(`[PlatoRelay] Captcha requested, solving...`);
                     captchaToken = await solveShapeCaptcha(CAPTCHA_ORIGIN_DEFAULT);
                     continue;
                 }
-                if (stepRes.ok || stepRes.alreadyExists) break;
+                if (stepRes.ok || stepRes.alreadyExists) {
+                    console.log(`[PlatoRelay] Step successful, proceeding to: ${stepRes.url?.slice(0, 50)}...`);
+                    break;
+                }
 
                 const msg = String(stepRes.message || '').toLowerCase();
                 if (msg.includes('rate limit') || msg.includes('slow down') || msg.includes('too fast')) {
@@ -863,12 +881,12 @@ async function fetchKey(urlOrTicket) {
                 break;
             }
 
-            const checkSt = await client.status();
-            if (checkSt.key && checkSt.key !== "KEY_NOT_FOUND") {
-                return { key: checkSt.key, error: null };
-            }
-
+            // Only check status if step failed or we want to double check before redirecting
             if (!stepRes || !stepRes.ok) {
+                const checkSt = await client.status();
+                if (checkSt.key && checkSt.key !== "KEY_NOT_FOUND") {
+                    return { key: checkSt.key, error: null };
+                }
                 if (stepRes && stepRes.message) {
                     throw new StageError("auth", stepRes.message);
                 }

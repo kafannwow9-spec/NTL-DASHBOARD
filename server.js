@@ -9,6 +9,8 @@ dotenv.config();
 
 const app = express();
 const PORT = 3000;
+// ملاحظة: في بيئة AI Studio يجب استخدام البورت 3000 لكي يعمل العرض المباشر.
+// إذا كنت ستنقل البوت لاستضافة خارجية، يمكنك تغييره إلى 20163 هناك.
 
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ limit: '25mb', extended: true }));

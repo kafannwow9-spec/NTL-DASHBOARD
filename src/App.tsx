@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { motion } from "motion/react";
 import { 
   Play, 
   Pause, 
@@ -39,7 +40,8 @@ import {
   Database,
   Activity,
   Code,
-  ChevronRight
+  ChevronRight,
+  Languages
 } from "lucide-react";
 
 export interface ConsoleLogEntry {
@@ -87,6 +89,9 @@ interface TicketPanel {
   buttonText: string;
   buttonEmoji: string;
   buttonStyle: "Primary" | "Success" | "Danger" | "Secondary";
+  translationEnabled?: boolean;
+  translationTitle?: string;
+  translationDesc?: string;
 }
 
 interface SuggestionPanel {
@@ -100,6 +105,9 @@ interface SuggestionPanel {
   downvoteEmoji: string;
   createThread: boolean;
   anonymous: boolean;
+  translationEnabled?: boolean;
+  translationTitle?: string;
+  translationDesc?: string;
 }
 
 interface ProtectionItem {
@@ -261,6 +269,14 @@ export default function App() {
   // Direct Broadcast State
   const [broadcastChannelId, setBroadcastChannelId] = useState("");
   const [broadcastContent, setBroadcastContent] = useState("");
+  const [broadcastType, setBroadcastType] = useState<"message" | "custom_embed">("message");
+  const [broadcastTitle, setBroadcastTitle] = useState("");
+  const [broadcastColor, setBroadcastColor] = useState("#5865F2");
+  const [broadcastImage, setBroadcastImage] = useState("");
+  const [broadcastFooter, setBroadcastFooter] = useState("");
+  const [translationEnabled, setTranslationEnabled] = useState(false);
+  const [translationTitle, setTranslationTitle] = useState("");
+  const [translationDesc, setTranslationDesc] = useState("");
 
   // Saving / Feedback State
   const [isSaving, setIsSaving] = useState(false);
@@ -669,18 +685,36 @@ export default function App() {
   // Send Broadcast Message
   const handleSendBroadcast = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!broadcastChannelId || !broadcastContent.trim()) {
-      showToast("يرجى اختيار الروم وتحديد محتوى الرسالة أولاً!", "error");
+    if (!broadcastChannelId || (!broadcastContent.trim() && !broadcastTitle.trim())) {
+      showToast("يرجى اختيار الروم وتحديد محتوى الرسالة أو العنوان أولاً!", "error");
       return;
     }
 
-    handleSaveAll({
+    const payload: any = {
       channelId: broadcastChannelId,
+      type: broadcastType,
       content: broadcastContent
-    });
+    };
+
+    if (broadcastType === "custom_embed") {
+      payload.embedData = {
+        type: "v2",
+        title: broadcastTitle,
+        description: broadcastContent,
+        color: broadcastColor,
+        img: broadcastImage,
+        footer: broadcastFooter,
+        translationEnabled: translationEnabled,
+        translationTitle: translationTitle,
+        translationDesc: translationDesc
+      };
+    }
+
+    handleSaveAll(payload);
 
     setBroadcastContent("");
-    showToast("تم إرسال الرسالة إلى قائمة الانتظار للمزامنة اللحظية!", "success");
+    setBroadcastTitle("");
+    showToast("تم إرسال الرسالة / الإعلان إلى قائمة الانتظار للمزامنة اللحظية!", "success");
   };
 
   return (
@@ -1198,6 +1232,54 @@ export default function App() {
                               </div>
                             </div>
 
+                            {/* Translation Button Section for Ticket Panel */}
+                            <div className="mt-4 p-3 bg-indigo-500/5 rounded-xl border border-indigo-500/20">
+                              <div className="flex items-center justify-between mb-3">
+                                <span className="font-bold text-indigo-300 flex items-center gap-2">
+                                  <Languages className="w-4 h-4" />
+                                  <span>زر الترجمة التلقائية</span>
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setTicketPanels((prev) => prev.map((p) => (p.id === panel.id ? { ...p, translationEnabled: !p.translationEnabled } : p)));
+                                  }}
+                                  className={`px-3 py-1 rounded-lg text-[10px] font-bold transition ${panel.translationEnabled ? "bg-rose-500/20 text-rose-400 border border-rose-500/30" : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"}`}
+                                >
+                                  {panel.translationEnabled ? "إزالة الزر" : "إضافة زر الترجمة"}
+                                </button>
+                              </div>
+                              
+                              {panel.translationEnabled && (
+                                <div className="space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                                  <div>
+                                    <label className="block text-slate-400 text-[10px] font-bold mb-1">العنوان المترجم (English):</label>
+                                    <input
+                                      type="text"
+                                      value={panel.translationTitle || ""}
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        setTicketPanels((prev) => prev.map((p) => (p.id === panel.id ? { ...p, translationTitle: val } : p)));
+                                      }}
+                                      className="w-full bg-[#1e1f22] border border-indigo-500/30 rounded-lg px-3 py-2 text-white focus:outline-none"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-slate-400 text-[10px] font-bold mb-1">الوصف المترجم (English):</label>
+                                    <textarea
+                                      rows={2}
+                                      value={panel.translationDesc || ""}
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        setTicketPanels((prev) => prev.map((p) => (p.id === panel.id ? { ...p, translationDesc: val } : p)));
+                                      }}
+                                      className="w-full bg-[#1e1f22] border border-indigo-500/30 rounded-lg px-3 py-2 text-white focus:outline-none"
+                                    />
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
                           </div>
                         ) : (
                           <div className="flex flex-col justify-center bg-[#1e1f22]/30 p-4 rounded-xl border border-white/5 space-y-2 text-xs text-slate-300">
@@ -1594,6 +1676,54 @@ export default function App() {
                                 />
                               </div>
                             </div>
+
+                            {/* Translation Button Section for Suggestion Panel */}
+                            <div className="mt-4 p-3 bg-amber-500/5 rounded-xl border border-amber-500/20">
+                              <div className="flex items-center justify-between mb-3">
+                                <span className="font-bold text-amber-300 flex items-center gap-2">
+                                  <Languages className="w-4 h-4" />
+                                  <span>زر الترجمة التلقائية</span>
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSuggestionPanels((prev) => prev.map((s) => (s.id === sug.id ? { ...s, translationEnabled: !s.translationEnabled } : s)));
+                                  }}
+                                  className={`px-3 py-1 rounded-lg text-[10px] font-bold transition ${sug.translationEnabled ? "bg-rose-500/20 text-rose-400 border border-rose-500/30" : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"}`}
+                                >
+                                  {sug.translationEnabled ? "إزالة الزر" : "إضافة زر الترجمة"}
+                                </button>
+                              </div>
+                              
+                              {sug.translationEnabled && (
+                                <div className="space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                                  <div>
+                                    <label className="block text-slate-400 text-[10px] font-bold mb-1">العنوان المترجم (English):</label>
+                                    <input
+                                      type="text"
+                                      value={sug.translationTitle || ""}
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        setSuggestionPanels((prev) => prev.map((s) => (s.id === sug.id ? { ...s, translationTitle: val } : s)));
+                                      }}
+                                      className="w-full bg-[#1e1f22] border border-amber-500/30 rounded-lg px-3 py-2 text-white focus:outline-none"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-slate-400 text-[10px] font-bold mb-1">الوصف المترجم (English):</label>
+                                    <textarea
+                                      rows={2}
+                                      value={sug.translationDesc || ""}
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        setSuggestionPanels((prev) => prev.map((s) => (s.id === sug.id ? { ...s, translationDesc: val } : s)));
+                                      }}
+                                      className="w-full bg-[#1e1f22] border border-amber-500/30 rounded-lg px-3 py-2 text-white focus:outline-none"
+                                    />
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         )}
 
@@ -1828,27 +1958,143 @@ export default function App() {
                 </h3>
 
                 <div className="text-xs space-y-3">
-                  <div>
-                    <label className="block text-slate-300 mb-1 font-semibold">اختر الروم المراد الإرسال إليها:</label>
-                    <select
-                      value={broadcastChannelId}
-                      onChange={(e) => setBroadcastChannelId(e.target.value)}
-                      className="w-full bg-[#1e1f22] border border-[#3f4147] rounded-xl px-3 py-2.5 text-white focus:outline-none"
-                    >
-                      <option value="">-- اختر القناة النصية --</option>
-                      {channels.map((c) => (
-                        <option key={c.id} value={c.id}>#{c.name}</option>
-                      ))}
-                    </select>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-slate-300 mb-1 font-semibold">نوع الرسالة:</label>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setBroadcastType("message")}
+                          className={`flex-1 py-2 rounded-xl border text-xs font-bold transition ${broadcastType === "message" ? "bg-blue-600 text-white border-blue-500" : "bg-[#1e1f22] text-slate-400 border-[#3f4147]"}`}
+                        >
+                          رسالة عادية
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setBroadcastType("custom_embed")}
+                          className={`flex-1 py-2 rounded-xl border text-xs font-bold transition ${broadcastType === "custom_embed" ? "bg-indigo-600 text-white border-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.3)]" : "bg-[#1e1f22] text-slate-400 border-[#3f4147]"}`}
+                        >
+                          Embed Components V2
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-300 mb-1 font-semibold">اختر الروم المراد الإرسال إليها:</label>
+                      <select
+                        value={broadcastChannelId}
+                        onChange={(e) => setBroadcastChannelId(e.target.value)}
+                        className="w-full bg-[#1e1f22] border border-[#3f4147] rounded-xl px-3 py-2.5 text-white focus:outline-none"
+                      >
+                        <option value="">-- اختر القناة النصية --</option>
+                        {channels.map((c) => (
+                          <option key={c.id} value={c.id}>#{c.name}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
 
+                  {broadcastType === "custom_embed" && (
+                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4 pt-2 border-t border-white/5 mt-2">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-slate-400 text-[10px] uppercase font-bold mb-1">عنوان الإيمبد (Title):</label>
+                          <input
+                            type="text"
+                            value={broadcastTitle}
+                            onChange={(e) => setBroadcastTitle(e.target.value)}
+                            className="w-full bg-[#1e1f22] border border-[#3f4147] rounded-lg px-3 py-2 text-white focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-slate-400 text-[10px] uppercase font-bold mb-1">لون الجانب (Color):</label>
+                          <div className="flex gap-2">
+                            <input
+                              type="color"
+                              value={broadcastColor}
+                              onChange={(e) => setBroadcastColor(e.target.value)}
+                              className="h-9 w-12 bg-transparent border-0 p-0 cursor-pointer"
+                            />
+                            <input
+                              type="text"
+                              value={broadcastColor}
+                              onChange={(e) => setBroadcastColor(e.target.value)}
+                              className="flex-1 bg-[#1e1f22] border border-[#3f4147] rounded-lg px-3 py-2 text-white font-mono text-xs"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-400 text-[10px] uppercase font-bold mb-1">رابط صورة (Image URL):</label>
+                        <input
+                          type="text"
+                          value={broadcastImage}
+                          onChange={(e) => setBroadcastImage(e.target.value)}
+                          placeholder="https://..."
+                          className="w-full bg-[#1e1f22] border border-[#3f4147] rounded-lg px-3 py-2 text-white focus:outline-none"
+                        />
+                      </div>
+
+                      <div className="bg-indigo-500/5 p-4 rounded-xl border border-indigo-500/20 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <label className="text-indigo-300 font-bold flex items-center gap-2">
+                            <Languages className="w-4 h-4" />
+                            <span>زر الترجمة التلقائية (Translation Button)</span>
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => setTranslationEnabled(!translationEnabled)}
+                            className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-2 cursor-pointer ${translationEnabled ? "bg-rose-600 hover:bg-rose-500 text-white border-rose-500" : "bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500"}`}
+                          >
+                            {translationEnabled ? (
+                              <>
+                                <X className="w-3.5 h-3.5" />
+                                <span>إزالة زر الترجمة</span>
+                              </>
+                            ) : (
+                              <>
+                                <Plus className="w-3.5 h-3.5" />
+                                <span>إضافة زر الترجمة</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                        
+                        {translationEnabled && (
+                          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} className="space-y-3 pt-2 overflow-hidden">
+                            <p className="text-[10px] text-slate-400">سيظهر زر أسفل الإيمبد عند الضغط عليه يترجم المحتوى للغة الإنجليزية.</p>
+                            <div>
+                              <label className="block text-slate-400 text-[10px] font-bold mb-1">العنوان بالإنجليزية (English Title):</label>
+                              <input
+                                type="text"
+                                value={translationTitle}
+                                onChange={(e) => setTranslationTitle(e.target.value)}
+                                className="w-full bg-[#1e1f22] border border-indigo-500/30 rounded-lg px-3 py-2 text-white focus:outline-none"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-slate-400 text-[10px] font-bold mb-1">الوصف بالإنجليزية (English Description):</label>
+                              <textarea
+                                rows={3}
+                                value={translationDesc}
+                                onChange={(e) => setTranslationDesc(e.target.value)}
+                                className="w-full bg-[#1e1f22] border border-indigo-500/30 rounded-lg px-3 py-2 text-white focus:outline-none"
+                              />
+                            </div>
+                          </motion.div>
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+
                   <div>
-                    <label className="block text-slate-300 mb-1 font-semibold">محتوى الإعلان / الرسالة:</label>
+                    <label className="block text-slate-300 mb-1 font-semibold">{broadcastType === "message" ? "محتوى الإعلان / الرسالة:" : "محتوى الإيمبد (Description):"}</label>
                     <textarea
                       rows={4}
                       value={broadcastContent}
                       onChange={(e) => setBroadcastContent(e.target.value)}
-                      placeholder="اكتب الإعلان هنا..."
+                      placeholder={broadcastType === "message" ? "اكتب الإعلان هنا..." : "اكتب وصف الإيمبد هنا (يدعم المارك داون والمكونات)..."}
                       className="w-full bg-[#1e1f22] border border-[#3f4147] rounded-xl px-3 py-2.5 text-white focus:outline-none"
                     />
                   </div>
