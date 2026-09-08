@@ -1,8 +1,0 @@
-{
-  "name": "NTL Dashboard",
-  "description": "لوحة التحكم الرسمية لبوت NTL لإدارة السيرفرات، الإيمبدات، التذاكر، وأنظمة الحماية والتخطي.",
-  "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
-}
