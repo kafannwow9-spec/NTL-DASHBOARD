@@ -2933,6 +2933,44 @@ async function processVideoDownload(url) {
  * @param {string} imageUrl The temporary Discord attachment URL or other image URL
  * @returns {Promise<string>} The permanent ImgBB image URL
  */
+/**
+ * Saves a given image URL locally to the uploads folder and returns the local dashboard URL.
+ * 
+ * @param {string} imageUrl The temporary Discord attachment URL
+ * @returns {Promise<string>} The local dashboard image URL
+ */
+async function saveImageLocally(imageUrl) {
+    if (!imageUrl) return imageUrl;
+    
+    try {
+        const response = await axios({
+            method: 'get',
+            url: imageUrl,
+            responseType: 'arraybuffer'
+        });
+        
+        const buffer = Buffer.from(response.data);
+        const fileName = `img_${Date.now()}_${Math.random().toString(36).substring(7)}.png`;
+        const uploadsDir = path.join(__dirname, 'uploads');
+        
+        if (!fs.existsSync(uploadsDir)) {
+            fs.mkdirSync(uploadsDir, { recursive: true });
+        }
+        
+        const filePath = path.join(uploadsDir, fileName);
+        fs.writeFileSync(filePath, buffer);
+        
+        const baseUrl = process.env.APP_URL || 'https://ntldashboard.pages.dev';
+        const cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+        const fileId = fileName.replace('.png', '');
+        
+        return `${cleanBaseUrl}/image-${fileId}`;
+    } catch (error) {
+        console.error('Error saving image locally:', error.message);
+        return imageUrl; // Fallback to original URL
+    }
+}
+
 async function uploadToImgBB(imageUrl) {
     if (!imageUrl) return imageUrl;
     
@@ -5223,13 +5261,13 @@ client.on('messageCreate', async message => {
         for (const [id, attachment] of message.attachments) {
             // Check if it's an image
             if (attachment.contentType && attachment.contentType.startsWith('image/')) {
-                const imgUrl = await uploadToImgBB(attachment.url);
+                const imgUrl = await saveImageLocally(attachment.url);
                 if (imgUrl) {
                     urls.push(imgUrl);
                 }
             } else if (attachment.name.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
                 // Fallback check by extension
-                const imgUrl = await uploadToImgBB(attachment.url);
+                const imgUrl = await saveImageLocally(attachment.url);
                 if (imgUrl) {
                     urls.push(imgUrl);
                 }

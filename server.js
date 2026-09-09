@@ -106,13 +106,41 @@ app.get('/api/templates', (req, res) => {
     "https://i.ibb.co/QvGpKBgb/upload.png"
   ];
 
+  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+  const host = req.headers['x-forwarded-host'] || req.get('host');
+  const baseUrl = `${protocol}://${host}`;
+
   const templates = userTemplateUrls.map((url, index) => ({
     id: `tpl-${index + 1}`,
     name: `قالب ترحيب ${index + 1}`,
-    url: url
+    url: `${baseUrl}/image-local-proxy?url=${encodeURIComponent(url)}`
   }));
 
   res.json({ success: true, templates });
+});
+
+// Proxy route to serve external images through our domain
+app.get('/image-local-proxy', async (req, res) => {
+  const imageUrl = req.query.url;
+  if (!imageUrl) return res.status(400).send('Missing url parameter');
+  
+  try {
+    const response = await axios({
+      method: 'get',
+      url: imageUrl,
+      responseType: 'stream'
+    });
+    
+    // Set content type if possible
+    if (response.headers['content-type']) {
+      res.setHeader('Content-Type', response.headers['content-type']);
+    }
+    
+    response.data.pipe(res);
+  } catch (error) {
+    console.error('Proxy error:', error.message);
+    res.status(500).send('Error proxying image');
+  }
 });
 
 // Serve template images
