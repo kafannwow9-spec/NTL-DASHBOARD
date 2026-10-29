@@ -17,7 +17,7 @@ export async function onRequest(context) {
   const pathString = pathArray.join('/');
   
   // 3. Construct the target backend URL exactly like the curl command
-  const targetUrl = `http://de3.bot-hosting.net:20163/api/${pathString}`;
+  const targetUrl = `http://fi12.bot-hosting.cloud:25405/api/${pathString}`;
   const url = new URL(request.url);
   const fetchUrl = targetUrl + url.search;
 
@@ -27,10 +27,16 @@ export async function onRequest(context) {
   headers.delete('origin');
   headers.delete('referer');
 
+  // Inject authentication secrets for the bot backend API
+  headers.set('X-Bot-Secret', '38dj38nr89oq');
+  headers.set('X-NTL-Secret', '38dj38nr89oq');
+  headers.set('Authorization', 'Bearer 38dj38nr89oq');
+
   const fetchOptions = {
     method: request.method,
     headers: headers,
-    redirect: 'follow'
+    redirect: 'follow',
+    signal: AbortSignal.timeout(12000)
   };
 
   // 5. Pass the body if it's a POST/PUT request
@@ -53,8 +59,13 @@ export async function onRequest(context) {
     });
   } catch (err) {
     return new Response(JSON.stringify({ error: err.message, targetUrl: fetchUrl }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" }
+      status: 502,
+      headers: {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Bot-Secret, X-Ntl-Secret"
+      }
     });
   }
 }

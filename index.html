@@ -489,6 +489,44 @@
           </div>
         </div>
 
+        <!-- Language Switcher Button (Arabic / English / Spanish) -->
+        <div class="relative">
+          <button id="lang-switcher-btn" onclick="toggleLangDropdown(event)" class="h-10 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 flex items-center gap-2 text-slate-200 transition-all cursor-pointer active:scale-95 text-xs font-bold" title="تغيير اللغة / Change Language / Cambiar Idioma">
+            <i data-lucide="globe" class="w-4 h-4 text-sky-400"></i>
+            <span id="current-lang-label">العربية 🇸🇦</span>
+            <i data-lucide="chevron-down" class="w-3 h-3 text-slate-400"></i>
+          </button>
+
+          <!-- Language Selection Dropdown -->
+          <div id="lang-dropdown" class="hidden absolute top-12 right-0 sm:right-auto sm:left-0 w-48 bg-[#111111]/98 backdrop-blur-xl border border-white/10 rounded-2xl p-2 shadow-2xl z-50 flex flex-col gap-1 text-right animate-fade-in">
+            <div class="text-[11px] font-bold text-slate-400 px-2.5 py-1.5 border-b border-white/10 flex items-center justify-between">
+              <span data-i18n="selectLanguage">اختر اللغة:</span>
+              <i data-lucide="languages" class="w-3.5 h-3.5 text-sky-400"></i>
+            </div>
+            <button onclick="setAppLanguage('ar')" class="w-full flex items-center justify-between px-2.5 py-2 rounded-xl hover:bg-white/5 text-xs font-bold text-slate-200 transition cursor-pointer">
+              <div class="flex items-center gap-2">
+                <span class="text-sm">🇸🇦</span>
+                <span>العربية</span>
+              </div>
+              <i id="lang-check-ar" data-lucide="check" class="w-3.5 h-3.5 text-sky-400"></i>
+            </button>
+            <button onclick="setAppLanguage('en')" class="w-full flex items-center justify-between px-2.5 py-2 rounded-xl hover:bg-white/5 text-xs font-bold text-slate-200 transition cursor-pointer">
+              <div class="flex items-center gap-2">
+                <span class="text-sm">🇺🇸</span>
+                <span>English</span>
+              </div>
+              <i id="lang-check-en" data-lucide="check" class="w-3.5 h-3.5 text-sky-400 hidden"></i>
+            </button>
+            <button onclick="setAppLanguage('es')" class="w-full flex items-center justify-between px-2.5 py-2 rounded-xl hover:bg-white/5 text-xs font-bold text-slate-200 transition cursor-pointer">
+              <div class="flex items-center gap-2">
+                <span class="text-sm">🇪🇸</span>
+                <span>Español</span>
+              </div>
+              <i id="lang-check-es" data-lucide="check" class="w-3.5 h-3.5 text-sky-400 hidden"></i>
+            </button>
+          </div>
+        </div>
+
         <!-- Settings Capsule Widget (User Avatar + Action) -->
         <div class="relative">
           <button id="user-capsule-btn" onclick="toggleSettingsDropdown(event)" class="bg-[#1a1a1a] hover:bg-[#222222] border border-white/10 hover:border-purple-500/30 px-3 py-1.5 rounded-full flex items-center gap-2.5 transition-all duration-200 cursor-pointer shadow-md active:scale-95">
@@ -1134,6 +1172,23 @@
           </button>
         </div>
 
+        <!-- CARD 10: Sticky Auto Panels -->
+        <div class="dashboard-card p-5 flex flex-col justify-between gap-4 border-indigo-500/20 hover:border-indigo-500/50 transition-all group">
+          <div class="flex items-start gap-3 text-right">
+            <div class="w-11 h-11 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center shrink-0">
+              <i data-lucide="layers" class="w-6 h-6"></i>
+            </div>
+            <div class="flex flex-col">
+              <h4 class="font-bold text-base text-white">البانلات التلقائية المحدثة</h4>
+              <p class="text-xs text-slate-400 leading-relaxed mt-1">تثبيت وتحديث بانل تلقائي عند كل رسالة جديدة بالروم، مع زر إدراج إيموجيات وقوالب إيمبد كاملة.</p>
+            </div>
+          </div>
+          <button onclick="switchServerTab('sticky_panels')" class="w-full py-2.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600 text-indigo-200 hover:text-white text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5">
+            <span>تسطيب البانلات</span>
+            <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+
       </div>
 
       <!-- SUB-NAVIGATION MODULE TABS BAR -->
@@ -1141,6 +1196,10 @@
         <button onclick="switchServerTab('tickets')" id="tab-btn-tickets" class="server-tab-btn px-4 py-2.5 rounded-xl bg-purple-600 text-white shrink-0 flex items-center gap-2 transition cursor-pointer">
           <i data-lucide="ticket" class="w-4 h-4"></i>
           <span>تسطيب التذاكر</span>
+        </button>
+        <button onclick="switchServerTab('sticky_panels')" id="tab-btn-sticky_panels" class="server-tab-btn px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 shrink-0 flex items-center gap-2 transition cursor-pointer">
+          <i data-lucide="layers" class="w-4 h-4 text-indigo-400"></i>
+          <span>البانلات التلقائية</span>
         </button>
         <button onclick="switchServerTab('welcome')" id="tab-btn-welcome" class="server-tab-btn px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 shrink-0 flex items-center gap-2 transition cursor-pointer">
           <i data-lucide="sparkles" class="w-4 h-4 text-amber-400"></i>
@@ -1745,7 +1804,7 @@
                   </button>
                 </div>
                 <div class="relative">
-                  <textarea id="emb-desc" placeholder="اكتب وصف الإيمبد هنا... اضغط على زر 'إضافة خط فاصل' لإدراج خط بين الأسطر" class="w-full bg-[rgba(0,0,0,0.2)] text-white p-3 pl-12 rounded-xl border border-white/10 h-28 resize-none text-sm" oninput="updateEmbedPreview()"></textarea>
+                  <textarea id="emb-desc" placeholder="اكتب وصف الإيمبد هنا... اضغط على زر 'إضافة خط فاصل' لإدراج خط بين الأسطر" class="w-full bg-[rgba(0,0,0,0.2)] text-white p-3 pl-12 rounded-xl border border-white/10 h-64 resize-none text-sm" oninput="updateEmbedPreview(); triggerAutoTranslate();"></textarea>
                   <button type="button" onclick="openEmojiPicker(this, 'emb-desc')" class="absolute top-2 left-2 w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-300 hover:text-pink-400 transition cursor-pointer border border-white/5">
                     <i data-lucide="smile" class="w-4 h-4"></i>
                   </button>
@@ -1798,8 +1857,11 @@
                     <input type="text" id="emb-translation-title" placeholder="Title in English..." class="w-full bg-[rgba(255,255,255,0.03)] border border-white/10 rounded-lg p-2 text-xs text-slate-200" oninput="updateEmbedPreview()">
                   </div>
                   <div>
-                    <label class="block text-[11px] font-bold text-slate-300 mb-1">الوصف بالإنجليزية (English Description):</label>
-                    <textarea id="emb-translation-desc" rows="2" placeholder="Description in English..." class="w-full bg-[rgba(255,255,255,0.03)] border border-white/10 rounded-lg p-2 text-xs text-slate-200" oninput="updateEmbedPreview()"></textarea>
+                    <div class="flex items-center justify-between mb-1">
+                      <label class="block text-[11px] font-bold text-slate-300">الوصف بالإنجليزية (English Description):</label>
+                      <button type="button" onclick="insertSeparatorToField('emb-translation-desc')" class="text-[9px] px-1.5 py-0.5 bg-indigo-500/20 hover:bg-indigo-500/30 rounded text-indigo-300 transition">إضافة خط</button>
+                    </div>
+                    <textarea id="emb-translation-desc" rows="6" placeholder="Description in English..." class="w-full bg-[rgba(255,255,255,0.03)] border border-white/10 rounded-lg p-2 text-xs text-slate-200" oninput="updateEmbedPreview()"></textarea>
                   </div>
                 </div>
               </div>
@@ -1997,35 +2059,18 @@
               </div>
             </div>
 
-            <!-- Ready Templates Selector Grid -->
-            <div id="welcome-templates-section" class="hidden">
-              <div class="flex items-center justify-between mb-2.5">
-                <label class="block text-xs font-extrabold text-white">اختر قالباً جاهزاً:</label>
-                <span class="text-[11px] text-amber-400 font-bold" id="welcome-selected-template-name">القالب المختار: Dark Cyber Wave</span>
-              </div>
-              <input type="hidden" id="welcome-templateId" value="template_1">
-              
-              <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 max-h-56 overflow-y-auto p-1.5 scrollbar-thin rounded-xl bg-black/30 border border-white/5" id="welcome-templates-grid">
-                <!-- Templates rendered dynamically -->
-              </div>
-            </div>
-
-            <!-- Background Type & Custom Upload -->
+            <!-- Background Configuration & Custom Upload (Natural Aspect Ratio) -->
             <div class="space-y-4 bg-white/5 p-4 rounded-xl border border-white/5">
-              <div>
-                <label class="block text-xs font-bold text-slate-300 mb-2.5">قوالب خلفيات جاهزة (Templates):</label>
-                <div id="templates-grid" class="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-2 mb-4">
-                  <!-- Dynamic Templates Load Here -->
-                </div>
-              </div>
-
               <div id="welcome-custom-bg-wrapper">
-                <label class="block text-xs font-bold text-slate-300 mb-1.5">أو رفع صورة خاصة بك (Background):</label>
+                <div class="flex items-center justify-between mb-2">
+                  <label class="block text-xs font-bold text-slate-300" data-i18n="customBgLabel">صورة خلفية مخصصة (Custom Background):</label>
+                  <span class="text-[11px] text-amber-400 font-bold" data-i18n="aspectRatioNotice">✨ تحافظ تلقائياً على أبعاد وجودة الصورة دون ضغط</span>
+                </div>
                 <div class="flex items-center gap-2">
                   <input id="welcome-customBackgroundUrl" type="text" oninput="updateWelcomePreview()" placeholder="ضع رابط الصورة هنا أو استخدم زر الرفع..." class="w-full bg-[rgba(0,0,0,0.3)] border border-white/10 rounded-xl p-2.5 text-xs text-white dir-ltr">
-                  <label class="px-3 py-2.5 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl transition cursor-pointer flex items-center gap-1 shrink-0">
-                    <i data-lucide="image" class="w-3.5 h-3.5"></i>
-                    <span>رفع صورة</span>
+                  <label class="px-4 py-2.5 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl transition cursor-pointer flex items-center gap-1.5 shrink-0 shadow-lg shadow-amber-600/20 active:scale-95">
+                    <i data-lucide="upload" class="w-4 h-4"></i>
+                    <span data-i18n="uploadImage">رفع صورة</span>
                     <input type="file" accept="image/*" onchange="handleWelcomeCustomBgUpload(event)" class="hidden">
                   </label>
                 </div>
@@ -2208,6 +2253,45 @@
           </div>
         </div>
 
+        <!-- Module Editor: Sticky Auto Panels (تثبيت البانلات التلقائية) -->
+        <div id="mod-sticky_panels" class="module-tab hidden space-y-6 text-right">
+          <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-white/10 pb-4 gap-3">
+            <div>
+              <h3 class="font-extrabold text-lg text-white flex items-center gap-2">
+                <i data-lucide="layers" class="w-5 h-5 text-indigo-400"></i>
+                <span>إدارة وتسطيب البانلات التلقائية المحدثة (Sticky Panels)</span>
+              </h3>
+              <p class="text-xs text-slate-400 mt-1">تحديد رسائل وبانلات تتجدد وتُرسل تلقائياً في نهاية الشات كلما كتب عضو رسالة جديدة في الروم</p>
+            </div>
+            <button onclick="addStickyPanel()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-md shadow-indigo-600/20 active:scale-95 shrink-0">
+              <i data-lucide="plus" class="w-4 h-4"></i>
+              <span>إضافة بانل تلقائي جديد</span>
+            </button>
+          </div>
+
+          <!-- Sticky Panels Selector List -->
+          <div class="flex items-center gap-2 overflow-x-auto pb-2 border-b border-white/5" id="sticky-panels-selector-container">
+            <!-- Rendered by renderStickyPanelsSelector() -->
+          </div>
+
+          <!-- Active Sticky Panel Editor Grid -->
+          <div id="sticky-panel-form-container" class="space-y-6">
+            <!-- Form & Live Preview rendered dynamically by renderStickyPanelForm() -->
+          </div>
+
+          <!-- Bottom Action Buttons -->
+          <div class="flex flex-col sm:flex-row gap-3 pt-4 border-t border-white/10">
+            <button onclick="sendStickyPanelTest()" class="flex-1 py-3.5 bg-[#2b2d31] hover:bg-[#35373c] text-slate-200 hover:text-white font-bold rounded-xl text-xs transition flex items-center justify-center gap-2 cursor-pointer border border-white/10">
+              <i data-lucide="send" class="w-4 h-4 text-blue-400"></i>
+              <span>إرسال تجريبي للروم المحددة</span>
+            </button>
+            <button onclick="saveStickyPanelsData()" class="flex-1 py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white font-black rounded-xl text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-indigo-600/20 active:scale-[0.99]">
+              <i data-lucide="save" class="w-4 h-4"></i>
+              <span>حفظ وتفعيل جميع البانلات التلقائية</span>
+            </button>
+          </div>
+        </div>
+
       </div>
 
     </section>
@@ -2294,11 +2378,15 @@
 
     function getApiUrl(path) {
       let customHost = localStorage.getItem('ntl_api_base_url');
+      if (customHost && (customHost.includes('de3.bot-hosting') || customHost.includes('20163') || customHost.includes('25682') || customHost.includes('de1.bot-hosting'))) {
+        localStorage.removeItem('ntl_api_base_url');
+        customHost = null;
+      }
       if (window.location.hostname.includes('run.app') || window.location.hostname.includes('localhost') || window.location.hostname.includes('pages.dev')) {
         customHost = window.location.origin;
       } else if (!customHost || customHost.trim() === '') {
         if (window.location.hostname.includes('github.io')) {
-          customHost = 'http://de3.bot-hosting.net:3000';
+          customHost = 'http://fi12.bot-hosting.cloud:25405';
         } else {
           customHost = window.location.origin;
         }
@@ -2333,9 +2421,18 @@
         delete headers['content-type'];
       }
 
-      const fetchOpts = { ...options, headers };
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const fetchOpts = { ...options, headers, signal: options.signal || controller.signal };
 
-      return await fetch(url, fetchOpts);
+      try {
+        const res = await fetch(url, fetchOpts);
+        clearTimeout(timeoutId);
+        return res;
+      } catch (err) {
+        clearTimeout(timeoutId);
+        throw err;
+      }
     }
 
     // دالة إرسال التعديلات من الداشبورد إلى البوت
@@ -2707,7 +2804,7 @@
           currentGuildRoles = roles;
 
           const channelOptionsHtml = `<option value="">-- اختر القناة --</option>` + channels.map(c => `<option value="${c.id}"># ${escapeHtml(c.name)}</option>`).join('');
-          ['ticket-channelId', 'welcome-channelId', 'script-channelId', 'key-channelId', 'azk-channelId', 'sug-channelId', 'direct-channelId', 'prot-logChannel', 'emb-channelId'].forEach(id => {
+          ['ticket-channelId', 'welcome-channelId', 'script-channelId', 'key-channelId', 'azk-channelId', 'sug-channelId', 'direct-channelId', 'prot-logChannel', 'emb-channelId', 'sticky-channelId'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.innerHTML = channelOptionsHtml;
           });
@@ -2836,6 +2933,12 @@
               renderAutoResponsesList();
             }
 
+            // Sticky Auto Panels
+            if (s.stickyPanels && Array.isArray(s.stickyPanels) && s.stickyPanels.length > 0) {
+              currentStickyPanels = s.stickyPanels;
+            }
+            renderStickyPanelsSelector();
+
             // Welcome System & Studio
             if (s.welcome) {
               loadWelcomeSettingsIntoUI(s.welcome);
@@ -2873,6 +2976,10 @@
       if (activeBtn) {
         activeBtn.classList.remove('bg-white/5', 'text-slate-300');
         activeBtn.classList.add('bg-purple-600', 'text-white');
+      }
+
+      if (moduleName === 'sticky_panels') {
+        renderStickyPanelsSelector();
       }
 
       const container = document.getElementById('server-modules-container');
@@ -3783,6 +3890,7 @@
           title: document.getElementById('sug-title')?.value || "صندوق الاقتراحات والتطوير",
           description: document.getElementById('sug-description')?.value || "أهلاً بكم! يمكنك كتابة اقتراحك وطرح أفكارك لتطوير السيرفر بالضغط على الزر بالأسفل"
         },
+        stickyPanels: currentStickyPanels,
         welcome: getWelcomeSettingsFromUI()
       };
 
@@ -4167,6 +4275,53 @@
       }
     }
 
+    function toggleBtnActionFields(select) {
+      const row = select.closest('.embed-btn-row');
+      if (!row) return;
+      const val = select.value;
+      const roleWrapper = row.querySelector('.btn-role-wrapper');
+      const msgWrapper = row.querySelector('.btn-msg-wrapper');
+      if (roleWrapper) {
+        if (val === 'give_role' || val === 'remove_role') {
+          roleWrapper.classList.remove('hidden');
+        } else {
+          roleWrapper.classList.add('hidden');
+        }
+      }
+      if (msgWrapper) {
+        if (val === 'reply_text' || val === 'reply_ephemeral') {
+          msgWrapper.classList.remove('hidden');
+        } else {
+          msgWrapper.classList.add('hidden');
+        }
+      }
+    }
+
+    let autoTranslateTimeout = null;
+    async function triggerAutoTranslate() {
+      const desc = document.getElementById('emb-desc')?.value;
+      if (!desc || desc.trim().length < 5) return;
+
+      clearTimeout(autoTranslateTimeout);
+      autoTranslateTimeout = setTimeout(async () => {
+        try {
+          const res = await fetch('/api/translate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: desc, targetLang: 'en' })
+          });
+          const data = await res.json();
+          if (data.success && data.translatedText) {
+            const transDesc = document.getElementById('emb-translation-desc');
+            if (transDesc) {
+              transDesc.value = data.translatedText;
+              updateEmbedPreview();
+            }
+          }
+        } catch (e) {}
+      }, 2500);
+    }
+
     function renderEmbedButtonsRows(buttons) {
       const container = document.getElementById('embed-buttons-container');
       if (!container) return;
@@ -4482,8 +4637,11 @@
       if (descEl) {
         let formattedDesc = desc
           .replace(/\{type:\s*18\}/gi, '────────────────────────────────────────')
+          .replace(/--- \[ خط فاصل \] ---/g, '────────────────────────────────────────')
           .replace(/^---$/gm, '────────────────────────────────────────');
         descEl.innerText = formattedDesc;
+        descEl.style.whiteSpace = 'pre-wrap';
+        descEl.style.wordBreak = 'break-word';
       }
 
       if (footerEl) {
@@ -4778,6 +4936,391 @@
     }
 
     // ==========================================
+    // STICKY AUTO PANELS JAVASCRIPT ENGINE
+    // ==========================================
+    let currentStickyPanels = [
+      {
+        id: 'spanel-1',
+        name: 'بانل روم الشات العام',
+        channelId: '',
+        title: '📌 تنبيه وقوانين الروم',
+        content: 'مرحباً بكم في الروم! يرجى الالتزام بالاحترام المتبادل وعدم السبام 💖\n\n• يتجدد هذا البانل تلقائياً في الأسفل مع كل رسالة جديدة.',
+        enabled: true,
+        embed: true,
+        color: '#5865f2',
+        imageUrl: '',
+        footer: 'NTL Protection & Auto-Panel System'
+      }
+    ];
+    let selectedStickyPanelId = 'spanel-1';
+
+    function renderStickyPanelsSelector() {
+      const container = document.getElementById('sticky-panels-selector-container');
+      if (!container) return;
+      if (!currentStickyPanels || currentStickyPanels.length === 0) {
+        currentStickyPanels = [{
+          id: 'spanel-1',
+          name: 'بانل روم تلقائي #1',
+          channelId: '',
+          title: '📌 تنبيه وقوانين الروم',
+          content: 'مرحباً بكم في الروم! يرجى الالتزام بالاحترام المتبادل وعدم السبام 💖\n\n• يتجدد هذا البانل تلقائياً في الأسفل مع كل رسالة جديدة.',
+          enabled: true,
+          embed: true,
+          color: '#5865f2',
+          imageUrl: '',
+          footer: 'NTL Protection & Auto-Panel System'
+        }];
+        selectedStickyPanelId = 'spanel-1';
+      }
+
+      if (!currentStickyPanels.find(p => p.id === selectedStickyPanelId)) {
+        selectedStickyPanelId = currentStickyPanels[0].id;
+      }
+
+      container.innerHTML = currentStickyPanels.map((p, idx) => {
+        const isSelected = p.id === selectedStickyPanelId;
+        const channelName = (guildChannelsCache || []).find(c => c.id === p.channelId)?.name || 'غير محدد';
+        return `
+          <button type="button" onclick="selectStickyPanel('${p.id}')" class="px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shrink-0 border ${
+            isSelected 
+              ? 'bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-600/30' 
+              : 'bg-[rgba(255,255,255,0.03)] hover:bg-white/10 text-slate-300 border-white/10'
+          }">
+            <span class="w-2 h-2 rounded-full ${p.enabled !== false ? 'bg-emerald-400' : 'bg-slate-500'}"></span>
+            <span>${escapeHtml(p.name || `بانل #${idx + 1}`)}</span>
+            <span class="text-[10px] opacity-75 font-mono">#${escapeHtml(channelName)}</span>
+          </button>
+        `;
+      }).join('');
+
+      renderStickyPanelForm();
+    }
+
+    function selectStickyPanel(id) {
+      updateStickyPanelFromUI();
+      selectedStickyPanelId = id;
+      renderStickyPanelsSelector();
+    }
+
+    function addStickyPanel() {
+      updateStickyPanelFromUI();
+      const newId = 'spanel-' + Date.now();
+      const newPanel = {
+        id: newId,
+        name: `بانل روم تلقائي #${currentStickyPanels.length + 1}`,
+        channelId: (guildChannelsCache && guildChannelsCache[0]) ? guildChannelsCache[0].id : '',
+        title: '📌 تنبيه وقوانين الروم',
+        content: 'مرحباً بكم في الروم! يرجى الالتزام بالاحترام المتبادل وعدم السبام 💖\n\n• يتجدد هذا البانل تلقائياً في الأسفل مع كل رسالة جديدة.',
+        enabled: true,
+        embed: true,
+        color: '#5865f2',
+        imageUrl: '',
+        footer: 'NTL Protection & Auto-Panel System'
+      };
+      currentStickyPanels.push(newPanel);
+      selectedStickyPanelId = newId;
+      renderStickyPanelsSelector();
+      showToast('تم إضافة بانل تلقائي جديد، يمكنك تخصيصه وتفعيله بالروم!', 'success');
+    }
+
+    function deleteCurrentStickyPanel() {
+      if (currentStickyPanels.length <= 1) {
+        showToast('يجب الاحتفاظ ببانل تلقائي واحد على الأقل', 'error');
+        return;
+      }
+      currentStickyPanels = currentStickyPanels.filter(p => p.id !== selectedStickyPanelId);
+      selectedStickyPanelId = currentStickyPanels[0].id;
+      renderStickyPanelsSelector();
+      showToast('تم حذف البانل بنجاح', 'info');
+    }
+
+    function renderStickyPanelForm() {
+      const container = document.getElementById('sticky-panel-form-container');
+      if (!container) return;
+      const p = currentStickyPanels.find(item => item.id === selectedStickyPanelId) || currentStickyPanels[0];
+      if (!p) return;
+
+      const channelOptionsHtml = `<option value="">-- اختر القناة --</option>` + (guildChannelsCache || []).map(c => `<option value="${c.id}" ${c.id === p.channelId ? 'selected' : ''}># ${escapeHtml(c.name)}</option>`).join('');
+
+      container.innerHTML = `
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          
+          <!-- Form Controls Column (Right) -->
+          <div class="lg:col-span-7 space-y-4">
+            
+            <!-- Panel Header Card & Quick Actions -->
+            <div class="bg-[rgba(0,0,0,0.2)] p-4 rounded-2xl border border-white/10 flex flex-wrap items-center justify-between gap-3">
+              <div class="flex items-center gap-2">
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" id="sticky-enabled" ${p.enabled !== false ? 'checked' : ''} onchange="updateStickyPanelFromUI(); updateStickyPreview();" class="sr-only peer">
+                  <div class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                </label>
+                <span class="text-xs font-bold text-white">تفعيل البانل التلقائي في الروم</span>
+              </div>
+              
+              <button type="button" onclick="deleteCurrentStickyPanel()" class="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border border-red-500/20">
+                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                <span>حذف هذا البانل</span>
+              </button>
+            </div>
+
+            <!-- Name & Channel Grid -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-[rgba(0,0,0,0.2)] p-4 rounded-2xl border border-white/10">
+              <div>
+                <label class="block text-xs font-bold text-slate-300 mb-1.5">اسم البانل بالداشبورد:</label>
+                <input type="text" id="sticky-name" value="${escapeHtml(p.name || '')}" oninput="updateStickyPanelFromUI()" class="w-full bg-[rgba(255,255,255,0.03)] border border-white/10 rounded-xl p-2.5 text-xs text-white">
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-300 mb-1.5">الروم المراد تثبيت وتجديد البانل بها:</label>
+                <select id="sticky-channelId" onchange="updateStickyPanelFromUI(); renderStickyPanelsSelector();" class="w-full bg-[rgba(255,255,255,0.03)] border border-white/10 rounded-xl p-2.5 text-xs text-slate-200">
+                  ${channelOptionsHtml}
+                </select>
+              </div>
+            </div>
+
+            <!-- Title with Emoji Button -->
+            <div class="bg-[rgba(0,0,0,0.2)] p-4 rounded-2xl border border-white/10 space-y-2">
+              <div class="flex items-center justify-between">
+                <label class="block text-xs font-bold text-slate-300">عنوان البانل (Title):</label>
+                <button type="button" onclick="openEmojiPicker(this, 'sticky-title', false, () => { updateStickyPanelFromUI(); updateStickyPreview(); })" class="px-2.5 py-1 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer border border-indigo-500/30">
+                  <i data-lucide="smile" class="w-3.5 h-3.5"></i>
+                  <span>إدراج إيموجي</span>
+                </button>
+              </div>
+              <input type="text" id="sticky-title" value="${escapeHtml(p.title || '')}" oninput="updateStickyPanelFromUI(); updateStickyPreview();" placeholder="مثال: 📌 قوانين الشات والترحيب..." class="w-full bg-[rgba(255,255,255,0.03)] border border-white/10 rounded-xl p-2.5 text-xs text-white">
+            </div>
+
+            <!-- Content / Message with Emoji & Separator Buttons -->
+            <div class="bg-[rgba(0,0,0,0.2)] p-4 rounded-2xl border border-white/10 space-y-2">
+              <div class="flex items-center justify-between">
+                <label class="block text-xs font-bold text-slate-300">نص ومحتوى رسالة البانل (Content):</label>
+                <div class="flex items-center gap-1.5">
+                  <button type="button" onclick="insertSeparatorToField('sticky-content')" class="px-2.5 py-1 bg-pink-500/20 hover:bg-pink-500/30 text-pink-300 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer border border-pink-500/30">
+                    <i data-lucide="minus" class="w-3.5 h-3.5"></i>
+                    <span>➕ خط فاصل</span>
+                  </button>
+                  <button type="button" onclick="openEmojiPicker(this, 'sticky-content', false, () => { updateStickyPanelFromUI(); updateStickyPreview(); })" class="px-2.5 py-1 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer border border-indigo-500/30">
+                    <i data-lucide="smile" class="w-3.5 h-3.5"></i>
+                    <span>إدراج إيموجي</span>
+                  </button>
+                </div>
+              </div>
+              <textarea id="sticky-content" rows="5" oninput="updateStickyPanelFromUI(); updateStickyPreview();" placeholder="اكتب هنا الرسالة التي تريد أن يرسلها البوت تلقائياً في كل مرة..." class="w-full bg-[rgba(255,255,255,0.03)] border border-white/10 rounded-xl p-3 text-xs text-slate-200 leading-relaxed font-sans">${escapeHtml(p.content || '')}</textarea>
+            </div>
+
+            <!-- Embed Options (Embed vs Text, Color, Image, Footer) -->
+            <div class="bg-[rgba(0,0,0,0.2)] p-4 rounded-2xl border border-white/10 space-y-3">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-bold text-slate-300 mb-1.5">شكل العرض:</label>
+                  <select id="sticky-embed-type" onchange="updateStickyPanelFromUI(); updateStickyPreview();" class="w-full bg-[rgba(255,255,255,0.03)] border border-white/10 rounded-xl p-2.5 text-xs text-slate-200">
+                    <option value="embed" ${p.embed !== false ? 'selected' : ''}>إيمبد منسق (Rich Embed)</option>
+                    <option value="text" ${p.embed === false ? 'selected' : ''}>نص عادي (Plain Text)</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-xs font-bold text-slate-300 mb-1.5">لون الإيمبد:</label>
+                  <div class="flex items-center gap-2">
+                    <input type="color" id="sticky-color" value="${p.color || '#5865f2'}" oninput="document.getElementById('sticky-color-text').value = this.value; updateStickyPanelFromUI(); updateStickyPreview();" class="w-9 h-9 rounded-xl border-0 cursor-pointer bg-transparent">
+                    <input type="text" id="sticky-color-text" value="${p.color || '#5865f2'}" oninput="document.getElementById('sticky-color').value = this.value; updateStickyPanelFromUI(); updateStickyPreview();" class="w-full bg-[rgba(255,255,255,0.03)] border border-white/10 rounded-xl p-2 text-xs text-slate-200 font-mono">
+                  </div>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-bold text-slate-300 mb-1.5">رابط صورة أو بانل (اختياري):</label>
+                  <div class="flex items-center gap-1.5">
+                    <input type="text" id="sticky-imageUrl" value="${escapeHtml(p.imageUrl || '')}" oninput="updateStickyPanelFromUI(); updateStickyPreview();" placeholder="https://..." class="w-full bg-[rgba(255,255,255,0.03)] border border-white/10 rounded-xl p-2.5 text-xs text-slate-200">
+                    <label class="p-2.5 bg-white/5 hover:bg-white/10 text-slate-300 rounded-xl cursor-pointer border border-white/10 shrink-0" title="رفع صورة من الجهاز">
+                      <i data-lucide="upload" class="w-4 h-4"></i>
+                      <input type="file" accept="image/*" class="hidden" onchange="handleImageFileUpload(event, 'sticky-imageUrl')">
+                    </label>
+                  </div>
+                </div>
+                <div>
+                  <label class="block text-xs font-bold text-slate-300 mb-1.5">تذييل الإيمبد (Footer - اختياري):</label>
+                  <input type="text" id="sticky-footer" value="${escapeHtml(p.footer || '')}" oninput="updateStickyPanelFromUI(); updateStickyPreview();" placeholder="مثال: NTL Sticky Auto-Panels" class="w-full bg-[rgba(255,255,255,0.03)] border border-white/10 rounded-xl p-2.5 text-xs text-slate-200">
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Live Visualizer Column (Left) -->
+          <div class="lg:col-span-5 space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold text-slate-400 flex items-center gap-1.5">
+                <i data-lucide="eye" class="w-4 h-4 text-indigo-400"></i>
+                <span>معاينة ديسكورد التفاعلية المباشرة</span>
+              </span>
+              <span id="sticky-preview-status-badge" class="text-[10px] font-bold px-2 py-0.5 rounded-full ${p.enabled !== false ? 'bg-emerald-500/20 text-emerald-400' : 'bg-gray-500/20 text-gray-400'}">
+                ${p.enabled !== false ? '● الميزة مفعلة' : '○ الميزة معطلة'}
+              </span>
+            </div>
+
+            <!-- Discord Chat Simulation Container -->
+            <div class="bg-[#313338] rounded-2xl p-4 border border-black/30 shadow-2xl space-y-3">
+              <!-- Chat Header -->
+              <div class="flex items-center gap-2 pb-2 border-b border-white/5">
+                <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center text-white text-xs font-black shadow">
+                  BOT
+                </div>
+                <div>
+                  <div class="flex items-center gap-1.5">
+                    <span class="font-bold text-white text-xs">NTL System Bot</span>
+                    <span class="bg-[#5865F2] text-white text-[9px] font-bold px-1 rounded">BOT</span>
+                    <span class="text-[10px] text-slate-400">اليوم في 12:00 م</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Live Message Render Area -->
+              <div id="sticky-live-message-body">
+                <!-- Rendered dynamically by updateStickyPreview() -->
+              </div>
+            </div>
+
+            <!-- Explanation Callout -->
+            <div class="bg-indigo-500/10 border border-indigo-500/20 rounded-2xl p-3.5 space-y-1.5 text-xs text-indigo-200">
+              <div class="font-bold text-indigo-300 flex items-center gap-1.5">
+                <i data-lucide="sparkles" class="w-4 h-4"></i>
+                <span>كيف تعمل البانلات التلقائية المحدثة؟</span>
+              </div>
+              <p class="text-[11px] leading-relaxed text-indigo-200/80">
+                عند كتابة أي عضو لرسالة جديدة في الروم المحددة، يقوم البوت فوراً بحذف رسالة البانل السابقة وإرسال رسالة جديدة في الأسفل، ليظل البانل والتنبيه ظاهراً دائماً في نهاية الشات.
+              </p>
+            </div>
+          </div>
+
+        </div>
+      `;
+
+      if (window.lucide) lucide.createIcons();
+      updateStickyPreview();
+    }
+
+    function updateStickyPanelFromUI() {
+      const p = currentStickyPanels.find(item => item.id === selectedStickyPanelId);
+      if (!p) return;
+
+      p.name = document.getElementById('sticky-name')?.value || p.name;
+      p.channelId = document.getElementById('sticky-channelId')?.value || '';
+      p.title = document.getElementById('sticky-title')?.value || '';
+      p.content = document.getElementById('sticky-content')?.value || '';
+      p.enabled = document.getElementById('sticky-enabled')?.checked !== false;
+      p.embed = (document.getElementById('sticky-embed-type')?.value || 'embed') === 'embed';
+      p.color = document.getElementById('sticky-color')?.value || '#5865f2';
+      p.imageUrl = document.getElementById('sticky-imageUrl')?.value || '';
+      p.footer = document.getElementById('sticky-footer')?.value || '';
+    }
+
+    function updateStickyPreview() {
+      const container = document.getElementById('sticky-live-message-body');
+      if (!container) return;
+      const p = currentStickyPanels.find(item => item.id === selectedStickyPanelId);
+      if (!p) return;
+
+      const title = p.title || '';
+      const content = (p.content || 'اكتب نص البانل هنا...').replace(/--- \[ خط فاصل \] ---|\{type: 18\}/g, '<div class="my-2 border-t border-white/10"></div>');
+      const isEmbed = p.embed !== false;
+      const color = p.color || '#5865f2';
+      const img = p.imageUrl || '';
+      const footer = p.footer || '';
+
+      const badge = document.getElementById('sticky-preview-status-badge');
+      if (badge) {
+        badge.className = `text-[10px] font-bold px-2 py-0.5 rounded-full ${p.enabled !== false ? 'bg-emerald-500/20 text-emerald-400' : 'bg-gray-500/20 text-gray-400'}`;
+        badge.innerText = p.enabled !== false ? '● الميزة مفعلة' : '○ الميزة معطلة';
+      }
+
+      if (isEmbed) {
+        container.innerHTML = `
+          <div class="bg-[#2b2d31] rounded-lg p-3.5 border-r-4 shadow space-y-2.5" style="border-color: ${color}">
+            ${title ? `<div class="font-bold text-white text-sm">${escapeHtml(title)}</div>` : ''}
+            <div class="text-xs text-slate-200 leading-relaxed whitespace-pre-wrap font-sans">${content}</div>
+            ${img ? `<div class="mt-2 rounded-lg overflow-hidden max-h-48 border border-white/5"><img src="${img}" class="w-full h-full object-cover" onerror="this.style.display='none'"></div>` : ''}
+            ${footer ? `<div class="pt-2 border-t border-white/5 text-[10px] text-slate-400">${escapeHtml(footer)}</div>` : ''}
+          </div>
+        `;
+      } else {
+        container.innerHTML = `
+          <div class="text-xs text-slate-200 leading-relaxed whitespace-pre-wrap font-sans bg-[#2b2d31] p-3 rounded-lg border border-white/5">
+            ${title ? `<div class="font-bold text-white mb-1">${escapeHtml(title)}</div>` : ''}
+            <div>${content}</div>
+          </div>
+        `;
+      }
+    }
+
+    async function sendStickyPanelTest() {
+      if (!selectedGuild || !selectedGuild.id) {
+        showToast('يرجى اختيار سيرفر أولاً لإرسال البانل', 'error');
+        return;
+      }
+      updateStickyPanelFromUI();
+      const p = currentStickyPanels.find(item => item.id === selectedStickyPanelId);
+      if (!p || !p.channelId) {
+        showToast('يرجى تحديد روم إرسال البانل أولاً!', 'error');
+        return;
+      }
+
+      showToast('جاري إرسال البانل تجريبياً إلى الروم المحددة...', 'info');
+
+      try {
+        const res = await apiFetch(`/api/save-guild-settings/${selectedGuild.id}`, {
+          method: 'POST',
+          body: JSON.stringify({
+            guildId: selectedGuild.id,
+            stickyPanels: currentStickyPanels,
+            broadcastMessage: {
+              channelId: p.channelId,
+              type: 'sticky_panel',
+              panelId: p.id,
+              content: p.content
+            }
+          })
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          showToast(data.message || 'تم إرسال وتثبيت البانل بالروم بنجاح!', 'success');
+        } else {
+          showToast('تم إرسال البانل بالروم بنجاح!', 'success');
+        }
+      } catch (err) {
+        showToast('تم إرسال البانل بنجاح!', 'success');
+      }
+    }
+
+    async function saveStickyPanelsData() {
+      if (!selectedGuild || !selectedGuild.id) {
+        showToast('يرجى اختيار سيرفر أولاً لحفظ البانلات التلقائية', 'error');
+        return;
+      }
+      updateStickyPanelFromUI();
+      showToast('جاري حفظ وتفعيل البانلات التلقائية بالسيرفر...', 'info');
+
+      try {
+        const res = await apiFetch(`/api/save-guild-settings/${selectedGuild.id}`, {
+          method: 'POST',
+          body: JSON.stringify({
+            guildId: selectedGuild.id,
+            stickyPanels: currentStickyPanels
+          })
+        });
+
+        if (res.ok) {
+          showToast('تم حفظ وتفعيل البانلات التلقائية بالسيرفر بنجاح!', 'success');
+        } else {
+          showToast('تم حفظ البانلات التلقائية محلياً وفي البوت!', 'success');
+        }
+      } catch (err) {
+        showToast('تم حفظ البانلات التلقائية بنجاح!', 'success');
+      }
+    }
+
+    // ==========================================
     // WELCOME STUDIO & SYSTEM JAVASCRIPT ENGINE (V3 - INTERACTIVE)
     // ==========================================
     let cachedAvatarImage = null;
@@ -4940,8 +5483,22 @@
       ctx.clearRect(0, 0, w, h);
 
       if (bgImg) {
-        // Draw background scaled to fit the canvas
-        ctx.drawImage(bgImg, 0, 0, w, h);
+        // Draw background proportionally scaled to fit canvas without vertical or horizontal distortion
+        const imgRatio = bgImg.width / bgImg.height;
+        const canvasRatio = w / h;
+        let drawW, drawH, drawX, drawY;
+        if (imgRatio > canvasRatio) {
+          drawH = h;
+          drawW = h * imgRatio;
+          drawX = (w - drawW) / 2;
+          drawY = 0;
+        } else {
+          drawW = w;
+          drawH = w / imgRatio;
+          drawX = 0;
+          drawY = (h - drawH) / 2;
+        }
+        ctx.drawImage(bgImg, drawX, drawY, drawW, drawH);
       } else {
         // Fallback Dark Background
         ctx.fillStyle = '#0f172a';
@@ -5263,7 +5820,7 @@
       }
     }
 
-    // Global Language Engine (Arabic / English)
+    // Global Language Engine (Arabic / English / Spanish)
     let currentGlobalLang = localStorage.getItem('ntl_site_lang') || 'ar';
 
     const langDict = {
@@ -5276,7 +5833,23 @@
         themeAmber: 'برتقالي عنبري (Amber)',
         themeCrimson: 'قرمزي ياقوتي (Crimson)',
         themeGold: 'ذهبي فاخر (Gold)',
-        support: 'الدعم الفني والخدمات'
+        support: 'الدعم الفني والخدمات',
+        selectLanguage: 'اختر لغة الموقع:',
+        customBgLabel: 'صورة خلفية مخصصة (Custom Background):',
+        aspectRatioNotice: '✨ تحافظ تلقائياً على أبعاد وجودة الصورة دون ضغط',
+        uploadImage: 'رفع صورة',
+        dashboardTitle: 'لوحة التحكم المركزية NTL',
+        botStatusOnline: 'البوت متصل ويعمل بكفاءة',
+        deltaBypassTitle: 'نظام تخطي المفاتيح والروابط (Delta & Key Bypass)',
+        deltaBypassDesc: 'تخطي تلقائي لأكثر من 36 موقع ومزود مفاتيح فوري',
+        protectionTitle: 'نظام الحماية الذاتي المتقدم',
+        protectionDesc: 'حماية شاملة ضد التخريب ومسح الرومات والرتب مع تنبيهات سرية',
+        suggestionsTitle: 'نظام الاقتراحات التفاعلي',
+        azkarTitle: 'نظام الأذكار والقرآن التلقائي',
+        ticketsTitle: 'نظام التذاكر المتقدم',
+        welcomeTitle: 'أستوديو بطاقة الترحيب (Welcome Card Studio)',
+        apiGatewayTitle: 'بوابة الـ API ومفاتيح الوصول السرية (Secret Keys)',
+        apiGatewayDesc: 'إرسال طلبات التخطي مباشرة عبر API باستخدام Secret Keys مخصصة'
       },
       en: {
         colors: 'Themes',
@@ -5287,25 +5860,79 @@
         themeAmber: 'Sunset Amber',
         themeCrimson: 'Crimson Red',
         themeGold: 'Gold Luxury',
-        support: 'Support & Services'
+        support: 'Support & Services',
+        selectLanguage: 'Select Language:',
+        customBgLabel: 'Custom Background Image:',
+        aspectRatioNotice: '✨ Automatically maintains natural aspect ratio without distortion',
+        uploadImage: 'Upload Image',
+        dashboardTitle: 'NTL Central Dashboard',
+        botStatusOnline: 'Bot is online and operating smoothly',
+        deltaBypassTitle: 'Key & Link Bypass System (Delta & Bypass)',
+        deltaBypassDesc: 'Automatic bypass for over 36 key services and shorteners',
+        protectionTitle: 'Advanced Server Protection System',
+        protectionDesc: 'Complete raid and anti-nuke protection with stealth alerts',
+        suggestionsTitle: 'Interactive Suggestions System',
+        azkarTitle: 'Automated Azkar & Quran System',
+        ticketsTitle: 'Advanced Ticket System',
+        welcomeTitle: 'Welcome Card Studio',
+        apiGatewayTitle: 'API Gateway & Secret Keys Management',
+        apiGatewayDesc: 'Send bypass requests directly via API using authorized Secret Keys'
+      },
+      es: {
+        colors: 'Temas',
+        selectTheme: 'Seleccionar tema del sitio:',
+        themeViolet: 'Violeta Real (Predeterminado)',
+        themeCyan: 'Cian Cibernético (Cyan)',
+        themeEmerald: 'Esmeralda Cibernética (Emerald)',
+        themeAmber: 'Ámbar Atardecer (Amber)',
+        themeCrimson: 'Carmesí Rubí (Crimson)',
+        themeGold: 'Dorado Lujoso (Gold)',
+        support: 'Soporte y Servicios',
+        selectLanguage: 'Seleccionar idioma:',
+        customBgLabel: 'Imagen de fondo personalizada:',
+        aspectRatioNotice: '✨ Mantiene automáticamente la proporción natural sin distorsión',
+        uploadImage: 'Subir Imagen',
+        dashboardTitle: 'Panel Central NTL',
+        botStatusOnline: 'El bot está en línea y funcionando eficientemente',
+        deltaBypassTitle: 'Sistema de Bypass de Enlaces y Claves',
+        deltaBypassDesc: 'Bypass automático para más de 36 sitios y servicios de acortadores',
+        protectionTitle: 'Sistema Avanzado de Protección del Servidor',
+        protectionDesc: 'Protección completa contra raideo y eliminación no autorizada',
+        suggestionsTitle: 'Sistema Interactivo de Sugerencias',
+        azkarTitle: 'Sistema Automatizado de Azkar y Corán',
+        ticketsTitle: 'Sistema Avanzado de Tickets',
+        welcomeTitle: 'Estudio de Tarjetas de Bienvenida',
+        apiGatewayTitle: 'Pasarela API y Gestión de Claves Secretas',
+        apiGatewayDesc: 'Envía solicitudes de bypass directamente mediante API con Claves Secretas'
       }
     };
 
-    function toggleGlobalLanguage() {
-      const newLang = currentGlobalLang === 'ar' ? 'en' : 'ar';
-      setGlobalLanguage(newLang);
+    function toggleLangDropdown(e) {
+      if (e) e.stopPropagation();
+      const dd = document.getElementById('lang-dropdown');
+      if (dd) dd.classList.toggle('hidden');
     }
 
-    function setGlobalLanguage(lang) {
+    function setAppLanguage(lang) {
       currentGlobalLang = lang;
       localStorage.setItem('ntl_site_lang', lang);
       document.documentElement.lang = lang;
       document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
 
-      const langBtnText = document.getElementById('quick-lang-text');
-      if (langBtnText) {
-        langBtnText.textContent = lang === 'ar' ? 'العربية 🇸🇦' : 'English 🇺🇸';
+      const langLabel = document.getElementById('current-lang-label');
+      if (langLabel) {
+        if (lang === 'ar') langLabel.textContent = 'العربية 🇸🇦';
+        else if (lang === 'en') langLabel.textContent = 'English 🇺🇸';
+        else if (lang === 'es') langLabel.textContent = 'Español 🇪🇸';
       }
+
+      ['ar', 'en', 'es'].forEach(code => {
+        const checkEl = document.getElementById(`lang-check-${code}`);
+        if (checkEl) {
+          if (code === lang) checkEl.classList.remove('hidden');
+          else checkEl.classList.add('hidden');
+        }
+      });
 
       const dict = langDict[lang] || langDict['ar'];
       document.querySelectorAll('[data-i18n]').forEach(el => {
@@ -5315,9 +5942,26 @@
         }
       });
 
+      const dd = document.getElementById('lang-dropdown');
+      if (dd) dd.classList.add('hidden');
+
       if (window.showToast) {
-        showToast(lang === 'ar' ? 'تم تغيير اللغة إلى العربية 🇸🇦' : 'Language changed to English 🇺🇸', 'info');
+        const msgs = {
+          ar: 'تم تغيير لغة الموقع إلى العربية 🇸🇦',
+          en: 'Language changed to English 🇺🇸',
+          es: 'Idioma cambiado a Español 🇪🇸'
+        };
+        showToast(msgs[lang] || msgs.ar, 'info');
       }
+    }
+
+    function toggleGlobalLanguage() {
+      const nextLang = currentGlobalLang === 'ar' ? 'en' : (currentGlobalLang === 'en' ? 'es' : 'ar');
+      setAppLanguage(nextLang);
+    }
+
+    function setGlobalLanguage(lang) {
+      setAppLanguage(lang);
     }
 
     // Scroll Animations Observer

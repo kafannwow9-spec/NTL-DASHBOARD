@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "motion/react";
+import StickyPanelsTab, { StickyPanel } from "./components/StickyPanelsTab";
+import ModerationTab, { ModerationSettings, defaultModerationSettings } from "./components/ModerationTab";
 import { 
   Play, 
   Pause, 
@@ -112,10 +114,14 @@ interface SuggestionPanel {
 
 interface ProtectionItem {
   enabled: boolean;
-  punishment: "kick" | "ban" | "timeout";
+  punishment: "kick" | "ban" | "timeout" | "none" | "none_delete" | string;
   punishmentDuration?: string;
   limit?: number;
   whitelistedRoles?: string[];
+  exemptedChannels?: string[];
+  exemptedCategories?: string[];
+  warnMessage?: string;
+  warnDuration?: number;
 }
 
 interface ProtectionSettings {
@@ -182,7 +188,7 @@ const DEFAULT_TRACKS: SimulatedTrack[] = [
 
 export default function App() {
   // Navigation Active Tab
-  const [activeTab, setActiveTab] = useState<"tickets" | "protection" | "suggestions" | "delta" | "azkar" | "music" | "broadcast" | "logs">("tickets");
+  const [activeTab, setActiveTab] = useState<"tickets" | "moderation" | "sticky_panels" | "protection" | "suggestions" | "delta" | "azkar" | "music" | "broadcast" | "logs" | "privacy">("tickets");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Guild Selection State
@@ -190,14 +196,33 @@ export default function App() {
   const [selectedGuildId, setSelectedGuildId] = useState<string>("");
   const [isLoadingGuilds, setIsLoadingGuilds] = useState(true);
 
-  // Live Channels, Categories & Roles
+  // Live Channels, Categories, Roles, Members & Emojis
   const [channels, setChannels] = useState<GuildChannel[]>([]);
   const [categories, setCategories] = useState<GuildCategory[]>([]);
   const [roles, setRoles] = useState<GuildRole[]>([]);
+  const [members, setMembers] = useState<{ id: string; name: string; displayName?: string; avatar?: string }[]>([]);
+  const [serverEmojis, setServerEmojis] = useState<{ id: string; name: string; url?: string; animated?: boolean }[]>([]);
   const [guildStats, setGuildStats] = useState({ memberCount: 14, channelsCount: 5, categoriesCount: 3, rolesCount: 4 });
   const [hasBot, setHasBot] = useState(true);
 
+  // Moderation Settings State
+  const [moderationSettings, setModerationSettings] = useState<ModerationSettings>(defaultModerationSettings);
+
   // Modular Settings State
+  const [stickyPanels, setStickyPanels] = useState<StickyPanel[]>([
+    {
+      id: "spanel-1",
+      name: "بانل روم الشات العام",
+      channelId: "",
+      title: "📌 تنبيه وقوانين الروم",
+      content: "مرحباً بكم في الروم! يرجى الالتزام بالاحترام المتبادل وعدم السبام 💖\n\n• يتجدد هذا البانل تلقائياً مع كل رسالة جديدة.",
+      enabled: true,
+      embed: true,
+      color: "#5865f2",
+      imageUrl: "",
+      footer: "NTL Protection & Auto-Panel System"
+    }
+  ]);
   const [ticketPanels, setTicketPanels] = useState<TicketPanel[]>([
     {
       id: "panel-1",
@@ -234,7 +259,7 @@ export default function App() {
     roles: { enabled: true, punishment: "kick" },
     channels: { enabled: true, punishment: "kick" },
     bots: { enabled: true, punishment: "ban" },
-    links: { enabled: false, punishment: "timeout", punishmentDuration: "1h" },
+    links: { enabled: false, punishment: "none", punishmentDuration: "1h", exemptedChannels: [], exemptedCategories: [], warnMessage: "⚠️ | {user} يمنع إرسال الروابط حفاظاً على أمن السيرفر!", warnDuration: 10 },
     spam: { enabled: true, punishment: "timeout", punishmentDuration: "10m" },
     massKick: { enabled: true, punishment: "ban", limit: 3 },
     massBan: { enabled: true, punishment: "ban", limit: 3 },
@@ -398,9 +423,19 @@ export default function App() {
     if (!selectedGuildId) return;
 
     addConsoleLog("CLIENT", "info", "🌐 جلب إعدادات السيرفر", `طلب GET إلى /api/guild-settings/${selectedGuildId}...`);
-    fetch(`/api/guild-settings/${selectedGuildId}`)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+    fetch(`/api/guild-settings/${selectedGuildId}`, {
+      headers: {
+        "X-NTL-Secret": "38dj38nr89oq",
+        "X-Bot-Secret": "38dj38nr89oq"
+      },
+      signal: controller.signal
+    })
       .then((res) => res.json())
       .then((data) => {
+        clearTimeout(timeoutId);
         if (data.success) {
           setHasBot(data.hasBot);
           if (data.stats) setGuildStats(data.stats);
@@ -421,6 +456,8 @@ export default function App() {
           setChannels(fetchedChannels);
           setCategories(fetchedCategories);
           setRoles(fetchedRoles);
+          if (data.members) setMembers(data.members);
+          if (data.emojis) setServerEmojis(data.emojis);
 
           const defaultChannelId = fetchedChannels[0]?.id || "";
           const defaultCategoryId = fetchedCategories[0]?.id || "";
@@ -428,6 +465,26 @@ export default function App() {
 
           // Populate Settings
           const st = data.settings || {};
+
+          // Sticky Auto Panels
+          if (st.stickyPanels && Array.isArray(st.stickyPanels) && st.stickyPanels.length > 0) {
+            setStickyPanels(st.stickyPanels);
+          } else {
+            setStickyPanels([
+              {
+                id: "spanel-1",
+                name: "بانل روم الشات العام",
+                channelId: defaultChannelId,
+                title: "📌 تنبيه وقوانين الروم",
+                content: "مرحباً بكم في الروم! يرجى الالتزام بالاحترام المتبادل وعدم السبام 💖\n\n• يتجدد هذا البانل تلقائياً مع كل رسالة جديدة.",
+                enabled: true,
+                embed: true,
+                color: "#5865f2",
+                imageUrl: "",
+                footer: "NTL Protection & Auto-Panel System"
+              }
+            ]);
+          }
 
           // Panels
           if (st.panels && typeof st.panels === "object" && Object.keys(st.panels).length > 0) {
@@ -526,6 +583,13 @@ export default function App() {
             setMusicSettings((prev) => ({ ...prev, channelId: defaultChannelId }));
           }
 
+          // Moderation
+          if (st.moderation) {
+            setModerationSettings(st.moderation);
+          } else {
+            setModerationSettings(defaultModerationSettings);
+          }
+
           // Fetch Audit Logs
           fetchAuditLogs(selectedGuildId);
         }
@@ -539,7 +603,7 @@ export default function App() {
   // Save All Settings
   const handleSaveAll = async (broadcastPayload?: {
     channelId: string;
-    type?: "broadcast" | "ticket_panel" | "suggestion_panel" | "azkar_now";
+    type?: "broadcast" | "ticket_panel" | "suggestion_panel" | "azkar_now" | "sticky_panel";
     panelId?: string;
     content?: string;
   }) => {
@@ -564,8 +628,10 @@ export default function App() {
 
     const payload = {
       panels: panelsObj,
+      stickyPanels,
       suggestions: suggestionsPayload,
       azkar,
+      moderation: moderationSettings,
       protection,
       musicEnabled: musicSettings.enabled,
       music: musicSettings,
@@ -718,7 +784,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen w-full bg-[#1e1f22] text-[#dbdee1] font-sans overflow-hidden dir-rtl" dir="rtl">
+    <div className="ntl-dashboard flex h-screen w-full bg-[#1e1f22] text-[#dbdee1] font-sans overflow-hidden dir-rtl" dir="rtl">
       
       {/* Toast Notification Container */}
       {toastMessage && (
@@ -733,10 +799,10 @@ export default function App() {
       )}
 
       {/* 1. Primary Left Sidebar - Servers List */}
-      <div className="w-[72px] bg-[#1e1f22] flex flex-col items-center py-4 gap-3 border-l border-black/30 shrink-0 hidden sm:flex">
+      <div className="ntl-server-rail w-[72px] bg-[#1e1f22] flex flex-col items-center py-4 gap-3 border-l border-black/30 shrink-0 hidden sm:flex">
         {/* NTL Logo / Icon */}
-        <div className="w-12 h-12 bg-gradient-to-tr from-indigo-600 to-violet-500 rounded-2xl flex items-center justify-center text-white text-lg font-black shadow-lg hover:scale-105 transition-transform cursor-pointer">
-          NTL
+        <div className="ntl-brand-mark w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg hover:scale-105 transition-transform cursor-pointer">
+          <img src="/ntl-logo.png" alt="NTL" className="w-full h-full object-contain" />
         </div>
 
         <div className="w-8 h-[2px] bg-[#35363c] rounded-full mx-auto my-1"></div>
@@ -771,7 +837,7 @@ export default function App() {
       </div>
 
       {/* 2. Secondary Navigation Sidebar (Dedicated Buttons Replacement for "Overview") */}
-      <div className={`w-64 bg-[#2b2d31] flex flex-col shrink-0 border-l border-black/20 text-right ${mobileMenuOpen ? "fixed inset-y-0 right-0 z-40" : "hidden md:flex"}`}>
+      <div className={`ntl-sidebar w-64 bg-[#2b2d31] flex flex-col shrink-0 border-l border-black/20 text-right ${mobileMenuOpen ? "fixed inset-y-0 right-0 z-40" : "hidden md:flex"}`}>
         
         {/* Guild Header Switcher */}
         <div className="h-14 border-b border-black/20 flex items-center justify-between px-4 font-bold text-white shadow-sm shrink-0 bg-[#2b2d31]">
@@ -810,6 +876,24 @@ export default function App() {
             </span>
           </button>
 
+          {/* Sticky Auto Panels Navigation Button */}
+          <button
+            onClick={() => { setActiveTab("sticky_panels"); setMobileMenuOpen(false); }}
+            className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-between cursor-pointer ${
+              activeTab === "sticky_panels" 
+                ? "bg-[#5865f2] text-white shadow-md scale-[1.02]" 
+                : "text-slate-300 hover:bg-[#35373c] hover:text-white"
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <Layers className="w-4 h-4 text-pink-400" />
+              <span>البانلات التلقائية (Auto Panels)</span>
+            </div>
+            <span className="text-[10px] bg-pink-500/20 text-pink-300 px-2 py-0.5 rounded-full font-mono">
+              {stickyPanels.filter(p => p.enabled).length}/{stickyPanels.length}
+            </span>
+          </button>
+
           {/* Protection System Navigation Button */}
           <button
             onClick={() => { setActiveTab("protection"); setMobileMenuOpen(false); }}
@@ -825,6 +909,24 @@ export default function App() {
             </div>
             <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full font-mono">
               شامل
+            </span>
+          </button>
+
+          {/* Moderation System Navigation Button */}
+          <button
+            onClick={() => { setActiveTab("moderation"); setMobileMenuOpen(false); }}
+            className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-between cursor-pointer ${
+              activeTab === "moderation" 
+                ? "bg-[#5865f2] text-white shadow-md scale-[1.02]" 
+                : "text-slate-300 hover:bg-[#35373c] hover:text-white"
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <ShieldAlert className="w-4 h-4 text-amber-400" />
+              <span>إشراف (Moderation)</span>
+            </div>
+            <span className="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full font-mono">
+              9 أوامر
             </span>
           </button>
 
@@ -858,21 +960,6 @@ export default function App() {
             <div className="flex items-center gap-2.5">
               <Key className="w-4 h-4 text-cyan-400" />
               <span>تخطي الدلتا (Delta Bypass)</span>
-            </div>
-          </button>
-
-          {/* Azkar & Quran Navigation Button */}
-          <button
-            onClick={() => { setActiveTab("azkar"); setMobileMenuOpen(false); }}
-            className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-between cursor-pointer ${
-              activeTab === "azkar" 
-                ? "bg-[#5865f2] text-white shadow-md scale-[1.02]" 
-                : "text-slate-300 hover:bg-[#35373c] hover:text-white"
-            }`}
-          >
-            <div className="flex items-center gap-2.5">
-              <BookOpen className="w-4 h-4 text-teal-400" />
-              <span>الأذكار والقرآن (Azkar)</span>
             </div>
           </button>
 
@@ -924,6 +1011,21 @@ export default function App() {
             </div>
           </button>
 
+          {/* Privacy & Terms Navigation Button */}
+          <button
+            onClick={() => { setActiveTab("privacy"); setMobileMenuOpen(false); }}
+            className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-between cursor-pointer ${
+              activeTab === "privacy" 
+                ? "bg-[#5865f2] text-white shadow-md scale-[1.02]" 
+                : "text-slate-300 hover:bg-[#35373c] hover:text-white"
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <Lock className="w-4 h-4 text-emerald-400" />
+              <span>سياسة الخصوصية والشروط (Privacy & Terms)</span>
+            </div>
+          </button>
+
         </div>
 
         {/* Global Save Action inside Navigation Sidebar */}
@@ -945,10 +1047,10 @@ export default function App() {
       </div>
 
       {/* 3. Main Workspace / Content Display Area */}
-      <div className="flex-1 bg-[#313338] flex flex-col min-w-0 overflow-hidden">
+      <div className="ntl-workspace flex-1 bg-[#313338] flex flex-col min-w-0 overflow-hidden">
         
         {/* Top Header Bar */}
-        <div className="h-14 border-b border-black/20 flex items-center justify-between px-4 md:px-6 shrink-0 bg-[#313338]">
+        <div className="ntl-topbar h-14 border-b border-black/20 flex items-center justify-between px-4 md:px-6 shrink-0 bg-[#313338]">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -958,13 +1060,15 @@ export default function App() {
             </button>
             <h2 className="text-base md:text-lg font-bold text-white flex items-center gap-2">
               {activeTab === "tickets" && <><Ticket className="w-5 h-5 text-indigo-400" /><span>إدارة بانلات التكتات</span></>}
+              {activeTab === "moderation" && <><ShieldAlert className="w-5 h-5 text-amber-400" /><span>نظام الإشراف الشامل وإدارة الأوامر (Moderation)</span></>}
+              {activeTab === "sticky_panels" && <><Layers className="w-5 h-5 text-pink-400" /><span>بانلات الرسائل التلقائية والمتجددة (Sticky Auto Panels)</span></>}
               {activeTab === "protection" && <><Shield className="w-5 h-5 text-emerald-400" /><span>نظام الحماية الشامل للبوت</span></>}
               {activeTab === "suggestions" && <><Lightbulb className="w-5 h-5 text-amber-400" /><span>إدارة قنوات الاقتراحات</span></>}
               {activeTab === "delta" && <><Key className="w-5 h-5 text-cyan-400" /><span>إعدادات نظام تخطي الدلتا</span></>}
-              {activeTab === "azkar" && <><BookOpen className="w-5 h-5 text-teal-400" /><span>نظام نشر الأذكار والآيات القرآنية</span></>}
               {activeTab === "music" && <><Music className="w-5 h-5 text-violet-400" /><span>مشغل وإعدادات الموسيقى</span></>}
               {activeTab === "broadcast" && <><Send className="w-5 h-5 text-blue-400" /><span>إرسال إعلان مباشر لرومات السيرفر</span></>}
               {activeTab === "logs" && <><FileText className="w-5 h-5 text-rose-400" /><span>سجلات البوت والنشاط اللحظي</span></>}
+              {activeTab === "privacy" && <><Lock className="w-5 h-5 text-emerald-400" /><span>سياسة الخصوصية وشروط الاستخدام (Privacy & Terms)</span></>}
             </h2>
           </div>
 
@@ -996,7 +1100,7 @@ export default function App() {
         </div>
 
         {/* Scrollable View Area */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
+        <div className="ntl-content flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
 
           {/* ========================================================= */}
           {/* TAB 1: TICKETS (TICKET PANELS - PANEL BY PANEL)          */}
@@ -1309,6 +1413,36 @@ export default function App() {
           )}
 
           {/* ========================================================= */}
+          {/* TAB: MODERATION SYSTEM (SUPERVISION & COMMAND SHORTCUTS)  */}
+          {/* ========================================================= */}
+          {activeTab === "moderation" && (
+            <ModerationTab
+              settings={moderationSettings}
+              setSettings={setModerationSettings}
+              roles={roles}
+              members={members}
+              onSave={handleSaveAll}
+              isSaving={isSaving}
+              showToast={showToast}
+            />
+          )}
+
+          {/* ========================================================= */}
+          {/* TAB: STICKY PANELS (AUTO CHANNEL MESSAGE REFRESH)        */}
+          {/* ========================================================= */}
+          {activeTab === "sticky_panels" && (
+            <StickyPanelsTab
+              panels={stickyPanels}
+              setPanels={setStickyPanels}
+              channels={channels}
+              serverEmojis={serverEmojis}
+              onSaveAll={handleSaveAll}
+              showToast={showToast}
+              isSaving={isSaving}
+            />
+          )}
+
+          {/* ========================================================= */}
           {/* TAB 2: PROTECTION SYSTEM (ALL PROTECTIONS ENABLED)       */}
           {/* ========================================================= */}
           {activeTab === "protection" && (
@@ -1453,11 +1587,11 @@ export default function App() {
                 </div>
 
                 {/* Protection Card Item 5 */}
-                <div className="bg-[#2b2d31] p-4 rounded-2xl border border-white/5 space-y-3">
+                <div className="bg-[#2b2d31] p-4 rounded-2xl border border-white/5 space-y-3 sm:col-span-2 lg:col-span-3">
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-sm text-white flex items-center gap-2">
                       <Send className="w-4 h-4 text-cyan-400" />
-                      <span>حماية الروابط الإعلانية</span>
+                      <span>حماية الروابط الإعلانية والخارجية</span>
                     </span>
                     <label className="relative inline-flex items-center cursor-pointer">
                       <input
@@ -1469,17 +1603,120 @@ export default function App() {
                       <div className="w-9 h-5 bg-[#4e5058] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
                     </label>
                   </div>
-                  <p className="text-[11px] text-[#949ba4]">حذف روابط الديسكورد والمواقع الخارجية تلقائياً.</p>
-                  <div className="pt-2 border-t border-white/5 flex items-center justify-between text-xs">
-                    <span className="text-[#949ba4]">العقاب:</span>
-                    <select
-                      value={protection.links.punishment}
-                      onChange={(e) => setProtection({ ...protection, links: { ...protection.links, punishment: e.target.value as any } })}
-                      className="bg-[#1e1f22] border border-[#3f4147] rounded px-2 py-1 text-xs text-white"
-                    >
-                      <option value="timeout">تايم أوت ساعتان</option>
-                      <option value="kick">طرد</option>
-                    </select>
+                  <p className="text-[11px] text-[#949ba4]">حذف الروابط تلقائياً مع خيارات استثناء فئات (كاتاجوريات) ورومات وتخصيص التحذير والعقوبة.</p>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pt-3 border-t border-white/5">
+                    {/* نوع العقوبة */}
+                    <div>
+                      <label className="block text-[11px] text-[#949ba4] mb-1 font-medium">نوع العقوبة المفروضة:</label>
+                      <select
+                        value={protection.links.punishment}
+                        onChange={(e) => setProtection({ ...protection, links: { ...protection.links, punishment: e.target.value as any } })}
+                        className="w-full bg-[#1e1f22] border border-[#3f4147] rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"
+                      >
+                        <option value="none">بدون عقوبة (حذف الرسالة والتحذير فقط)</option>
+                        <option value="timeout">تايم أوت (Timeout)</option>
+                        <option value="kick">طرد من السيرفر (Kick)</option>
+                        <option value="ban">حظر نهائي (Ban)</option>
+                      </select>
+                    </div>
+
+                    {/* مدة بقاء التحذير */}
+                    <div>
+                      <label className="block text-[11px] text-[#949ba4] mb-1 font-medium">مدة بقاء رسالة التحذير (بالثواني):</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="120"
+                        value={protection.links.warnDuration ?? 10}
+                        onChange={(e) => setProtection({ ...protection, links: { ...protection.links, warnDuration: parseInt(e.target.value) || 10 } })}
+                        placeholder="10"
+                        className="w-full bg-[#1e1f22] border border-[#3f4147] rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+
+                    {/* نص رسالة التحذير */}
+                    <div className="md:col-span-2 lg:col-span-1">
+                      <label className="block text-[11px] text-[#949ba4] mb-1 font-medium">نص رسالة التحذير ({'{user}'} لمنشن العضو):</label>
+                      <input
+                        type="text"
+                        value={protection.links.warnMessage || "⚠️ | {user} يمنع إرسال الروابط حفاظاً على أمن السيرفر!"}
+                        onChange={(e) => setProtection({ ...protection, links: { ...protection.links, warnMessage: e.target.value } })}
+                        placeholder="⚠️ | {user} يمنع إرسال الروابط..."
+                        className="w-full bg-[#1e1f22] border border-[#3f4147] rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* استثناء الكاتاجوريات والرومات */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+                    {/* استثناء الكاتاجوري */}
+                    <div className="bg-[#1e1f22]/70 p-3 rounded-xl border border-white/5 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                          📁 <span>الكاتاجوريات المستثناة بالكامل:</span>
+                        </span>
+                        <span className="text-[10px] text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-md">أي روم فيه مسموح بالروابط</span>
+                      </div>
+                      <div className="max-h-32 overflow-y-auto space-y-1.5 pr-1">
+                        {categories.length === 0 ? (
+                          <span className="text-[11px] text-zinc-500">لا توجد كاتاجوريات مسجلة.</span>
+                        ) : (
+                          categories.map((cat) => {
+                            const isExempt = (protection.links.exemptedCategories || []).includes(cat.id);
+                            return (
+                              <label key={cat.id} className="flex items-center gap-2 text-xs text-slate-300 hover:text-white cursor-pointer bg-white/5 hover:bg-white/10 px-2.5 py-1.5 rounded-lg transition-colors">
+                                <input
+                                  type="checkbox"
+                                  checked={isExempt}
+                                  onChange={(e) => {
+                                    const curr = protection.links.exemptedCategories || [];
+                                    const next = e.target.checked ? [...curr, cat.id] : curr.filter(id => id !== cat.id);
+                                    setProtection({ ...protection, links: { ...protection.links, exemptedCategories: next } });
+                                  }}
+                                  className="rounded border-zinc-600 text-cyan-500 focus:ring-0"
+                                />
+                                <span className="truncate">{cat.name}</span>
+                              </label>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+
+                    {/* استثناء رومات محددة */}
+                    <div className="bg-[#1e1f22]/70 p-3 rounded-xl border border-white/5 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                          💬 <span>رومات فردية مستثناة:</span>
+                        </span>
+                        <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md">مستثنى فقط</span>
+                      </div>
+                      <div className="max-h-32 overflow-y-auto space-y-1.5 pr-1">
+                        {channels.length === 0 ? (
+                          <span className="text-[11px] text-zinc-500">لا توجد رومات مسجلة.</span>
+                        ) : (
+                          channels.map((ch) => {
+                            const isExempt = (protection.links.exemptedChannels || []).includes(ch.id);
+                            return (
+                              <label key={ch.id} className="flex items-center gap-2 text-xs text-slate-300 hover:text-white cursor-pointer bg-white/5 hover:bg-white/10 px-2.5 py-1.5 rounded-lg transition-colors">
+                                <input
+                                  type="checkbox"
+                                  checked={isExempt}
+                                  onChange={(e) => {
+                                    const curr = protection.links.exemptedChannels || [];
+                                    const next = e.target.checked ? [...curr, ch.id] : curr.filter(id => id !== ch.id);
+                                    setProtection({ ...protection, links: { ...protection.links, exemptedChannels: next } });
+                                  }}
+                                  className="rounded border-zinc-600 text-cyan-500 focus:ring-0"
+                                />
+                                <span className="truncate">#{ch.name}</span>
+                              </label>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -1799,64 +2036,6 @@ export default function App() {
                 >
                   <Send className="w-4 h-4" />
                   <span>إرسال المفتاح ورابط التخطي إلى القناة الآن</span>
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* ========================================================= */}
-          {/* TAB 5: AZKAR                                              */}
-          {/* ========================================================= */}
-          {activeTab === "azkar" && (
-            <div className="space-y-6 max-w-4xl mx-auto">
-              <div className="bg-[#2b2d31] p-6 rounded-2xl border border-white/5 space-y-4">
-                <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                  <BookOpen className="w-5 h-5 text-teal-400" />
-                  <span>نظام نشر الأذكار والآيات القرآنية</span>
-                </h3>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                  <div>
-                    <label className="block text-slate-300 mb-1 font-semibold">روم نشر الأذكار:</label>
-                    <select
-                      value={azkar.channelId}
-                      onChange={(e) => setAzkar({ ...azkar, channelId: e.target.value })}
-                      className="w-full bg-[#1e1f22] border border-[#3f4147] rounded-xl px-3 py-2.5 text-white focus:outline-none"
-                    >
-                      <option value="">-- اختر القناة النصية --</option>
-                      {channels.map((c) => (
-                        <option key={c.id} value={c.id}>#{c.name}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-300 mb-1 font-semibold">معدل التكرار (بالدقائق):</label>
-                    <input
-                      type="number"
-                      value={azkar.intervalMinutes}
-                      onChange={(e) => setAzkar({ ...azkar, intervalMinutes: parseInt(e.target.value) || 30 })}
-                      className="w-full bg-[#1e1f22] border border-[#3f4147] rounded-xl px-3 py-2.5 text-white focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => {
-                    if (!azkar.channelId) {
-                      showToast("يرجى تحديد روم نشر الأذكار أولاً!", "error");
-                      return;
-                    }
-                    handleSaveAll({
-                      channelId: azkar.channelId,
-                      type: "azkar_now",
-                      content: `🌸 **[تفعيل وإرسال الأذكار]**`
-                    });
-                  }}
-                  className="w-full py-2.5 bg-teal-600 hover:bg-teal-500 text-white rounded-xl font-bold text-xs transition flex items-center justify-center gap-2 cursor-pointer mt-3"
-                >
-                  <Send className="w-4 h-4" />
-                  <span>تطبيق وحفظ إعدادات الأذكار وبدء النشر التلقائي</span>
                 </button>
               </div>
             </div>
@@ -2309,6 +2488,159 @@ export default function App() {
                   </div>
                 </div>
               )}
+
+            </div>
+          )}
+
+          {/* ========================================================= */}
+          {/* TAB 9: PRIVACY & TERMS OF SERVICE                         */}
+          {/* ========================================================= */}
+          {activeTab === "privacy" && (
+            <div className="space-y-6 max-w-4xl mx-auto text-right font-sans" dir="rtl">
+              
+              {/* Top Banner */}
+              <div className="bg-gradient-to-tr from-[#1a2e26] to-[#1e2330] p-8 rounded-2xl border border-emerald-500/10 space-y-3 relative overflow-hidden shadow-2xl">
+                <div className="absolute top-0 left-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-2xl"></div>
+                <div className="relative z-10">
+                  <span className="px-3 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full text-[10px] font-bold tracking-wider uppercase font-mono">
+                    🛡️ آمنة ومحمية بالكامل
+                  </span>
+                  <h3 className="text-2xl font-black text-white mt-3 flex items-center gap-3">
+                    <Shield className="w-8 h-8 text-emerald-400" />
+                    <span>سياسة الخصوصية وشروط الخدمة للبوت</span>
+                  </h3>
+                  <p className="text-sm text-slate-300 mt-2 leading-relaxed">
+                    نحن ملتزمون بحماية خصوصية بياناتك وتوفير تجربة استخدام آمنة ومستقرة تماماً داخل مجتمعات Discord. يرجى قراءة هذه الشروط والسياسات بعناية.
+                  </p>
+                </div>
+              </div>
+
+              {/* Two Column Layout: Tabs Info */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                
+                {/* Section 1: Privacy Policy */}
+                <div className="bg-[#2b2d31] p-6 rounded-2xl border border-white/5 space-y-4 hover:border-emerald-500/10 transition shadow-lg">
+                  <div className="flex items-center gap-3 border-b border-white/10 pb-3">
+                    <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-xl">
+                      <Lock className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h4 className="text-lg font-extrabold text-white">1. سياسة الخصوصية (Privacy Policy)</h4>
+                      <p className="text-[11px] text-slate-400">كيف نقوم بحماية بيانات خادمك وأعضائك</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 text-xs text-slate-300 leading-relaxed">
+                    <div className="bg-[#1e1f22] p-4 rounded-xl space-y-2 border border-white/5">
+                      <h5 className="font-bold text-white text-sm flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                        البيانات التي نجمعها ونخزنها:
+                      </h5>
+                      <p className="text-slate-400">
+                        لتقديم خدماتنا بشكل سليم، نقوم بحفظ البيانات الرقمية الأساسية فقط والمتمثلة في:
+                      </p>
+                      <ul className="list-disc list-inside space-y-1.5 text-slate-400 pl-2">
+                        <li>معرف السيرفر (Server ID) ومعرفات القنوات والرموز لإتمام الإعدادات.</li>
+                        <li>معرفات الأعضاء (User IDs) لتحديد الصلاحيات ورتب الدعم الفني.</li>
+                        <li>محتوى تذاكر الدعم الفني والرسائل فقط داخل روم التذاكر لتوفير خاصية سجلات التذاكر (Transcripts).</li>
+                      </ul>
+                    </div>
+
+                    <div className="bg-[#1e1f22] p-4 rounded-xl space-y-2 border border-white/5">
+                      <h5 className="font-bold text-white text-sm flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                        كيفية استخدام ومعالجة البيانات:
+                      </h5>
+                      <p className="text-slate-400">
+                        تُستخدم البيانات المحفوظة محلياً وفي قاعدة البيانات المشفرة لغرض واحد فقط وهو تشغيل خدمات البوت، مثل:
+                      </p>
+                      <ul className="list-disc list-inside space-y-1.5 text-slate-400 pl-2">
+                        <li>تطبيق نظام الحماية ضد التخريب (Protection) ومراقبة محاولات الاختراق تلقائياً.</li>
+                        <li>مزامنة الأذكار ونشرها التلقائي في القنوات المحددة.</li>
+                        <li>تسهيل إدارة التذاكر وتوجيه الأعضاء لرتب الدعم الصحيحة.</li>
+                      </ul>
+                    </div>
+
+                    <div className="bg-[#1e1f22] p-4 rounded-xl space-y-2 border border-white/5">
+                      <h5 className="font-bold text-white text-sm flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                        مشاركة البيانات مع أطراف خارجية:
+                      </h5>
+                      <p className="text-slate-400">
+                        نحن لا نبيع، ولا نؤجر، ولا نشارك أي بيانات تخص خادمك أو أعضاءك مع أي أطراف خارجية أو جهات تجارية تحت أي ظرف. بياناتك محفوظة بسرية تامة وتُعالج إلكترونياً بشكل تلقائي ومحمي بالكامل.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 2: Terms of Service */}
+                <div className="bg-[#2b2d31] p-6 rounded-2xl border border-white/5 space-y-4 hover:border-emerald-500/10 transition shadow-lg">
+                  <div className="flex items-center gap-3 border-b border-white/10 pb-3">
+                    <div className="p-2 bg-indigo-500/10 text-indigo-400 rounded-xl">
+                      <FileText className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h4 className="text-lg font-extrabold text-white">2. شروط الخدمة (Terms of Service)</h4>
+                      <p className="text-[11px] text-slate-400">شروط وضوابط استخدام البوت والخدمات</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 text-xs text-slate-300 leading-relaxed">
+                    <div className="bg-[#1e1f22] p-4 rounded-xl space-y-2 border border-white/5">
+                      <h5 className="font-bold text-white text-sm flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
+                        شروط الاستخدام الأساسية:
+                      </h5>
+                      <p className="text-slate-400">
+                        باستخدامك للبوت وإضافته لخادمك، فإنك توافق على الالتزام بالشروط والضوابط التالية:
+                      </p>
+                      <ul className="list-disc list-inside space-y-1.5 text-slate-400 pl-2">
+                        <li>الالتزام التام بشروط الخدمة الرسمية لمنصة Discord.</li>
+                        <li>عدم استخدام البوت في أنشطة غير قانونية، أو ترويج المحتوى الضار أو نشر البرمجيات الخبيثة.</li>
+                        <li>عدم محاولة اختراق، أو عمل هجمات لحجب الخدمة (DDoS)، أو استغلال ثغرات برمجية في كود البوت أو لوحة التحكم.</li>
+                      </ul>
+                    </div>
+
+                    <div className="bg-[#1e1f22] p-4 rounded-xl space-y-2 border border-white/5">
+                      <h5 className="font-bold text-white text-sm flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
+                        تحديد المسؤولية (Limitation of Liability):
+                      </h5>
+                      <p className="text-slate-400">
+                        يتم تقديم هذا البوت والخدمات الملحقة به "كما هي" دون أي ضمانات صريحة أو ضمنية. نحن نسعى لتقديم خدمة خالية من الانقطاع بنسبة 99%، ولكننا غير مسؤولين عن أي أضرار ناجمة عن توقف الخدمة مؤقتاً لأغراض الصيانة أو التحديثات الدورية للبنية التحتية.
+                      </p>
+                    </div>
+
+                    <div className="bg-[#1e1f22] p-4 rounded-xl space-y-2 border border-white/5">
+                      <h5 className="font-bold text-white text-sm flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
+                        تعديل وإلغاء شروط الخدمة:
+                      </h5>
+                      <p className="text-slate-400">
+                        نحتفظ بالحق الكامل في تحديث شروط الخدمة وسياسة الخصوصية هذه عند الضرورة لمواكبة تحديثات Discord أو الإضافات الجديدة للبوت. استمرارك في استخدام البوت واللوحة بعد أي تعديل يُعتبر موافقة كاملة منك على التعديلات الجديدة.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Bottom Support Info */}
+              <div className="bg-[#2b2d31] p-5 rounded-2xl border border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs text-slate-300">
+                <div className="space-y-1">
+                  <div className="font-bold text-white">هل لديك أي استفسار بخصوص الخصوصية أو شروط الاستخدام؟</div>
+                  <p className="text-slate-400 text-[11px]">فريق الدعم الفني للبوت متاح دائماً للإجابة على جميع تساؤلاتك ومساعدتك.</p>
+                </div>
+                <button
+                  onClick={() => {
+                    setActiveTab("tickets");
+                    showToast("انتقلت إلى وحدة الدعم الفني لإدارة التذاكر!", "success");
+                  }}
+                  className="px-5 py-2.5 bg-gradient-to-tr from-emerald-600 to-indigo-600 hover:from-emerald-500 hover:to-indigo-500 text-white rounded-xl font-bold transition shadow-md self-start sm:self-center cursor-pointer"
+                >
+                  تواصل معنا / فتح تذكرة
+                </button>
+              </div>
 
             </div>
           )}

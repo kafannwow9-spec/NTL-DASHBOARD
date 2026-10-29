@@ -6,11 +6,15 @@ const dotenv = require('dotenv');
 const axios = require('axios');
 const FormData = require('form-data');
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, ContainerBuilder, MessageFlags } = require('discord.js');
+const { askAI } = require('./gemini.js');
 
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.SERVER_PORT || process.env.PORT || 25405;
+
+// Gemini AI Setup (No longer using @google/genai to avoid missing module errors on hosting)
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "AQ.Ab8RN6KHehX24Xvasqkm4Cb4DzH1P4aqELCn7D-_92lqclOpCA";
 
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ limit: '25mb', extended: true }));
@@ -140,6 +144,20 @@ app.get('/image-local-proxy', async (req, res) => {
   } catch (error) {
     console.error('Proxy error:', error.message);
     res.status(500).send('Error proxying image');
+  }
+});
+
+// Serve locally saved images from uploads folder
+app.get('/image-:id', (req, res) => {
+  const fileId = req.params.id;
+  const uploadsDir = path.join(__dirname, 'uploads');
+  const filePath = path.join(uploadsDir, `${fileId}.png`);
+  
+  if (fs.existsSync(filePath)) {
+    res.sendFile(filePath);
+  } else {
+    // Try to proxy if it's not local
+    res.status(404).send('Image not found');
   }
 });
 
@@ -341,7 +359,7 @@ global.getAbsoluteUrl = getAbsoluteUrl;
 
 // Local Configuration & Database
 const configPath = path.join(__dirname, 'config.json');
-const ticketsDbPath = path.join(__dirname, 'tickets_db.json');
+const ticketsDbPath = path.join(__dirname, 'db.json');
 
 function getMergedConfig() {
   let fileConfig = {};
@@ -357,11 +375,11 @@ function getMergedConfig() {
   const CLIENT_SECRET = fileConfig.CLIENT_SECRET || process.env.CLIENT_SECRET || "";
   const BOT_TOKEN = fileConfig.BOT_TOKEN || process.env.BOT_TOKEN || "";
   const BOT_SECRET = fileConfig.BOT_SECRET || process.env.BOT_SECRET || "38dj38nr89oq";
-  const BOT_SERVER_URL = fileConfig.BOT_SERVER_URL || process.env.BOT_SERVER_URL || "http://de3.bot-hosting.net:20163";
+  const BOT_SERVER_URL = fileConfig.BOT_SERVER_URL || process.env.BOT_SERVER_URL || "http://fi12.bot-hosting.cloud:25405";
 
   const rawAppUrl = process.env.APP_URL || "";
   const cleanAppUrl = rawAppUrl.endsWith('/') ? rawAppUrl.slice(0, -1) : rawAppUrl;
-  const REDIRECT_URI = fileConfig.REDIRECT_URI || process.env.REDIRECT_URI || (cleanAppUrl ? `${cleanAppUrl}/auth/callback` : "http://localhost:20163/auth/callback");
+  const REDIRECT_URI = fileConfig.REDIRECT_URI || process.env.REDIRECT_URI || (cleanAppUrl ? `${cleanAppUrl}/auth/callback` : "http://fi12.bot-hosting.cloud:25405/auth/callback");
 
   return {
     CLIENT_ID,
@@ -413,7 +431,11 @@ async function fetchFromExternalBot(endpointPath, method = 'GET', body = null, r
       'Content-Type': 'application/json'
     };
 
-    const options = { method, headers };
+    const options = { 
+      method, 
+      headers,
+      signal: AbortSignal.timeout(3000)
+    };
     if (body) {
       options.body = JSON.stringify(body);
     }
@@ -441,7 +463,7 @@ function getLocalDB() {
       localDbCache = JSON.parse(fs.readFileSync(ticketsDbPath, 'utf8'));
       return localDbCache;
     } catch (err) {
-      console.error("❌ Error reading tickets_db.json:", err.message);
+      console.error("❌ Error reading db.json:", err.message);
     }
   }
   return {};
@@ -458,7 +480,7 @@ function saveLocalDB(data) {
   saveTimer = setTimeout(() => {
     saveTimer = null;
     fs.writeFile(ticketsDbPath, JSON.stringify(localDbCache), 'utf8', (err) => {
-      if (err) console.error("❌ Error saving tickets_db.json:", err.message);
+      if (err) console.error("❌ Error saving db.json:", err.message);
     });
   }, 1000);
   return true;
@@ -546,6 +568,29 @@ function verifyGuildAdmin(req, res, next) {
 }
 
 // API Routes
+app.post('/api/translate', async (req, res) => {
+  try {
+    const { text, targetLang = 'ar' } = req.body;
+    if (!text) return res.status(400).json({ success: false, error: 'Text is required' });
+
+    const promptText = `Translate the following text to ${targetLang}. 
+IMPORTANT: 
+1. Preserve all Discord-style markers like {type: 18} or --- exactly as they are.
+2. Preserve all emojis exactly as they are.
+3. Preserve all line breaks and spacing exactly as they are.
+4. Only return the translated text, nothing else.
+
+Text to translate:
+${text}`;
+
+    const translatedText = await askAI(promptText);
+    res.json({ success: true, translatedText: translatedText.trim() });
+  } catch (err) {
+    console.error('Translation error:', err.message);
+    res.status(500).json({ success: true, translatedText: req.body.text }); // Fallback to original text on error
+  }
+});
+
 app.post('/api/settings/update', authenticate, async (req, res) => {
   try {
     const { guildId, prefix, welcomeChannel, autoRole, panels, suggestions, azkar, protection, musicEnabled, deltaKeys, deltaKey, tickets } = req.body;
@@ -866,45 +911,62 @@ app.get('/api/guild-settings/:guildId', verifyGuildAdmin, async (req, res) => {
   let categoryChannels = [];
   let guildRoles = [];
   let guildEmojis = [];
+  let guildMembers = [];
 
-  if (isBotReady) {
-    try {
-      guildObj = botClient.guilds.cache.get(guildId) || await botClient.guilds.fetch(guildId).catch(() => null);
-    } catch (e) {}
+  if (isBotReady && botClient.guilds && botClient.guilds.cache) {
+    guildObj = botClient.guilds.cache.get(guildId) || null;
 
     if (guildObj) {
       try {
-        await guildObj.channels.fetch().catch(() => null);
-        await guildObj.roles.fetch().catch(() => null);
-        await guildObj.emojis.fetch().catch(() => null);
+        if (guildObj.channels && guildObj.channels.cache) {
+          guildObj.channels.cache.forEach(c => {
+            if (c.type === 0 || c.type === 5 || c.type === 'GUILD_TEXT' || c.type === 'GUILD_NEWS') {
+              textChannels.push({ id: c.id, name: c.name });
+            } else if (c.type === 4 || c.type === 'GUILD_CATEGORY') {
+              categoryChannels.push({ id: c.id, name: c.name });
+            }
+          });
+        }
+
+        if (guildObj.roles && guildObj.roles.cache) {
+          guildObj.roles.cache.forEach(r => {
+            if (r.name !== '@everyone' && !r.managed) {
+              guildRoles.push({ id: r.id, name: r.name, color: r.hexColor });
+            }
+          });
+        }
+
+        if (guildObj.emojis && guildObj.emojis.cache) {
+          guildObj.emojis.cache.forEach(e => {
+            guildEmojis.push({ id: e.id, name: e.name, url: e.url, animated: e.animated });
+          });
+        }
+
+        if (guildObj.members && guildObj.members.cache) {
+          guildObj.members.cache.forEach(m => {
+            if (m.user && !m.user.bot) {
+              guildMembers.push({
+                id: m.id,
+                name: m.user.username,
+                displayName: m.displayName || m.user.username,
+                avatar: m.user.displayAvatarURL ? m.user.displayAvatarURL() : null
+              });
+            }
+          });
+        }
       } catch (e) {}
-
-      guildObj.channels.cache.forEach(c => {
-        if (c.type === 0 || c.type === 5 || c.type === 'GUILD_TEXT' || c.type === 'GUILD_NEWS') {
-          textChannels.push({ id: c.id, name: c.name });
-        } else if (c.type === 4 || c.type === 'GUILD_CATEGORY') {
-          categoryChannels.push({ id: c.id, name: c.name });
-        }
-      });
-
-      guildObj.roles.cache.forEach(r => {
-        if (r.name !== '@everyone' && !r.managed) {
-          guildRoles.push({ id: r.id, name: r.name, color: r.hexColor });
-        }
-      });
-
-      guildObj.emojis.cache.forEach(e => {
-        guildEmojis.push({ id: e.id, name: e.name, url: e.url, animated: e.animated });
-      });
     }
   }
 
-  // If local channels empty, proxy request to live bot server if available
+  // Fallback default channels instantly if not cached
   if (textChannels.length === 0) {
-    const extData = await fetchFromExternalBot(`/api/guild-settings/${guildId}`, 'GET', null, req);
-    if (extData && extData.success) {
-      return res.json(extData);
-    }
+    textChannels = [
+      { id: 'general', name: 'عام-general' },
+      { id: 'tickets', name: 'tickets-تذاكر' },
+      { id: 'azkar', name: 'أذكار-وآيات' },
+      { id: 'delta', name: 'delta-bypass' },
+      { id: 'suggestions', name: 'اقتراحات-suggestions' }
+    ];
   }
 
   // Fallbacks ONLY if bot is not in guild and external fetch returned nothing
@@ -933,13 +995,16 @@ app.get('/api/guild-settings/:guildId', verifyGuildAdmin, async (req, res) => {
     channels: textChannels,
     categories: categoryChannels,
     roles: guildRoles,
+    members: guildMembers,
     emojis: guildEmojis,
     settings: {
       panels: localData.panels || {},
+      stickyPanels: localData.stickyPanels || [],
       customEmbeds: localData.customEmbeds || {},
       autoResponses: localData.autoResponses || [],
       suggestions: localData.suggestions || {},
       azkar: localData.azkar || {},
+      moderation: localData.moderation || null,
       protection: localData.protection || {
         antiBot: true,
         antiChannelRaid: true,
@@ -961,7 +1026,7 @@ app.get('/api/guild-settings/:guildId', verifyGuildAdmin, async (req, res) => {
 // Guild Settings Save & Broadcast Module
 app.post('/api/save-guild-settings/:guildId', verifyGuildAdmin, async (req, res) => {
   const { guildId } = req.params;
-  const { panels, suggestions, azkar, protection, musicEnabled, deltaKeys, broadcastMessage, tickets, deltaKey, scriptSystem, customEmbeds, autoResponses, welcome } = req.body;
+  const { panels, stickyPanels, suggestions, azkar, moderation, protection, musicEnabled, deltaKeys, broadcastMessage, tickets, deltaKey, scriptSystem, customEmbeds, autoResponses, welcome } = req.body;
 
   console.log(`📥 [SAVE LOCAL SETTINGS] Guild ID: ${guildId}`);
 
@@ -971,9 +1036,11 @@ app.post('/api/save-guild-settings/:guildId', verifyGuildAdmin, async (req, res)
   }
 
   if (panels !== undefined) db[guildId].panels = panels;
+  if (stickyPanels !== undefined) db[guildId].stickyPanels = stickyPanels;
   if (tickets !== undefined) db[guildId].tickets = tickets;
   if (suggestions !== undefined) db[guildId].suggestions = suggestions;
   if (azkar !== undefined) db[guildId].azkar = azkar;
+  if (moderation !== undefined) db[guildId].moderation = moderation;
   if (protection !== undefined) db[guildId].protection = protection;
   if (musicEnabled !== undefined) db[guildId].musicEnabled = musicEnabled;
   if (deltaKeys !== undefined) db[guildId].deltaKeys = deltaKeys;
@@ -1317,6 +1384,37 @@ app.post('/api/save-guild-settings/:guildId', verifyGuildAdmin, async (req, res)
             }
 
             deliveryLog = { status: "SENT", message: `تم إرسال الإيمبد المخصص لقناة #${chan.name} بنجاح!` };
+          } else if (type === 'sticky_panel') {
+            const spanelId = panelId || 'spanel-1';
+            const spanels = db[guildId]?.stickyPanels || [];
+            const targetPanel = spanels.find(p => p.id === spanelId) || spanels[0] || {};
+            
+            // Delete previous message if exists
+            if (targetPanel.lastMessageId) {
+              chan.messages.fetch(targetPanel.lastMessageId).then(oldMsg => {
+                if (oldMsg && oldMsg.deletable) oldMsg.delete().catch(() => {});
+              }).catch(() => {});
+            }
+
+            const sendPayload = {};
+            if (targetPanel.embed !== false) {
+              const embed = new EmbedBuilder()
+                .setColor(targetPanel.color || color || '#5865f2');
+              if (targetPanel.title || title) embed.setTitle(targetPanel.title || title);
+              if (targetPanel.content || content) embed.setDescription(targetPanel.content || content);
+              if (targetPanel.imageUrl && targetPanel.imageUrl.startsWith('http')) embed.setImage(targetPanel.imageUrl);
+              if (targetPanel.footer) embed.setFooter({ text: targetPanel.footer });
+              sendPayload.embeds = [embed];
+            } else {
+              sendPayload.content = targetPanel.title ? `**${targetPanel.title}**\n\n${targetPanel.content || content}` : (targetPanel.content || content);
+            }
+
+            const sent = await chan.send(sendPayload);
+            if (sent) {
+              targetPanel.lastMessageId = sent.id;
+              saveLocalDB(db);
+            }
+            deliveryLog = { status: "SENT", message: `تم إرسال وتثبيت البانل التلقائي في قناة #${chan.name} بنجاح!` };
           } else if (type === 'suggestion_panel') {
             const embed = new EmbedBuilder()
               .setColor(color || suggestions?.color || '#12a524')
@@ -1530,76 +1628,282 @@ app.get('/api/logs/:guildId', verifyGuildAdmin, (req, res) => {
   });
 });
 
-// PlatoRelay / Delta bypass APIs
-const { fetchKey } = require('./platorelayBypass.js');
+// ==================== DASHBOARD & BOT API BYPASS GATEWAY ====================
 
-app.get(['/api/bypass', '/api/platorelay'], async (req, res) => {
-  const targetUrl = req.query.url || req.query.link || req.query.d;
-  if (!targetUrl) return res.status(400).json({ success: false, error: "Missing 'url' query parameter" });
-  const startTime = Date.now();
-  try {
-    const isPlatoRelay = targetUrl.toLowerCase().includes('platorelay') || targetUrl.toLowerCase().includes('platoboost');
-    if (isPlatoRelay) {
-      const result = await fetchKey(targetUrl);
-      const timeTaken = ((Date.now() - startTime) / 1000).toFixed(2);
-      if (result && result.key) {
-        return res.json({ success: true, key: result.key, result: result.key, timeTaken: `${timeTaken}s` });
-      }
+function extractAndVerifyApiKey(req) {
+  const headerKey = req.headers['x-api-key'] || 
+                    req.headers['x-secret-key'] || 
+                    req.headers['x-ntl-secret'] || 
+                    req.headers['x-bot-secret'] || 
+                    req.headers['api-key'];
+                    
+  let authHeader = req.headers['authorization'];
+  if (authHeader && typeof authHeader === 'string') {
+    if (authHeader.toLowerCase().startsWith('bearer ')) {
+      authHeader = authHeader.slice(7).trim();
     }
-    if (global.bypassDeltaLink) {
-      const resBypass = await global.bypassDeltaLink(targetUrl);
-      const timeTaken = ((Date.now() - startTime) / 1000).toFixed(2);
-      if (resBypass && resBypass.bypassedLink) {
-        return res.json({ success: true, key: resBypass.bypassedLink, result: resBypass.bypassedLink, timeTaken: `${timeTaken}s` });
-      }
-    }
-    return res.status(500).json({ success: false, error: "Failed to bypass link" });
-  } catch (err) {
-    return res.status(500).json({ success: false, error: err.message });
   }
-});
 
-app.post(['/api/bypass', '/api/platorelay'], async (req, res) => {
-  const targetUrl = req.body.url || req.body.link || req.body.d;
-  if (!targetUrl) return res.status(400).json({ success: false, error: "Missing 'url' field" });
-  const startTime = Date.now();
-  try {
-    const isPlatoRelay = targetUrl.toLowerCase().includes('platorelay') || targetUrl.toLowerCase().includes('platoboost');
-    if (isPlatoRelay) {
-      const result = await fetchKey(targetUrl);
-      const timeTaken = ((Date.now() - startTime) / 1000).toFixed(2);
-      if (result && result.key) {
-        return res.json({ success: true, key: result.key, result: result.key, timeTaken: `${timeTaken}s` });
-      }
-    }
-    if (global.bypassDeltaLink) {
-      const resBypass = await global.bypassDeltaLink(targetUrl);
-      const timeTaken = ((Date.now() - startTime) / 1000).toFixed(2);
-      if (resBypass && resBypass.bypassedLink) {
-        return res.json({ success: true, key: resBypass.bypassedLink, result: resBypass.bypassedLink, timeTaken: `${timeTaken}s` });
-      }
-    }
-    return res.status(500).json({ success: false, error: "Failed to bypass link" });
-  } catch (err) {
-    return res.status(500).json({ success: false, error: err.message });
+  const queryKey = req.query?.secret_key || req.query?.apiKey || req.query?.api_key || req.query?.key || req.query?.k;
+  const bodyKey = req.body && (req.body.secret_key || req.body.apiKey || req.body.api_key || req.body.key || req.body.k);
+
+  const providedKey = (headerKey || authHeader || queryKey || bodyKey || '').trim();
+
+  if (!providedKey) {
+    return {
+      valid: false,
+      status: 401,
+      code: 'MISSING_SECRET_KEY',
+      error: '❌ مفتاح الـ API السري مفقود (Missing Secret Key). يجب تقديم secret_key صالح ومُنشأ عبر البوت (-api انشاء).'
+    };
   }
-});
 
-// Serve frontend SPA index.html fallback
-const distPath = path.join(__dirname, 'dist');
-if (fs.existsSync(path.join(distPath, 'index.html'))) {
-  app.use(express.static(distPath));
-} else {
-  app.use(express.static(__dirname));
+  if (typeof global.validateApiKey === 'function') {
+    const result = global.validateApiKey(providedKey);
+    if (!result.valid) {
+      const isExpired = result.code === 'EXPIRED_SECRET_KEY';
+      return {
+        valid: false,
+        status: 403,
+        code: result.code || 'INVALID_SECRET_KEY',
+        error: result.error || '❌ مفتاح API السري غير صحيح أو ملغي.',
+        keyObj: result.keyObj,
+        isExpired
+      };
+    }
+    return { valid: true, keyObj: result.keyObj, key: providedKey };
+  }
+
+  // Fallback: check db directly if global function not attached yet
+  return {
+    valid: false,
+    status: 503,
+    code: 'SYSTEM_STARTING',
+    error: '⚠️ جاري إعداد نظام التحقق من المفاتيح، يرجى المحاولة بعد لحظات.'
+  };
 }
 
-app.get('*', (req, res) => {
-  const distIndex = path.join(distPath, 'index.html');
-  if (fs.existsSync(distIndex)) {
-    res.sendFile(distIndex);
-  } else {
-    res.sendFile(path.join(__dirname, 'index.html'));
+async function handleBypassApiRequest(req, res) {
+  const auth = extractAndVerifyApiKey(req);
+  if (!auth.valid) {
+    return res.status(auth.status).json({
+      success: false,
+      code: auth.code,
+      error: auth.error,
+      expiredAt: auth.keyObj?.expiresAt || undefined
+    });
   }
+
+  const targetUrl = req.body?.url || req.body?.link || req.body?.d || req.query?.url || req.query?.link || req.query?.d;
+  if (!targetUrl || typeof targetUrl !== 'string' || !targetUrl.trim()) {
+    return res.status(400).json({
+      success: false,
+      code: 'MISSING_TARGET_URL',
+      error: "❌ الرابط المراد تخطيه مفقود. يرجى إرسال الرابط في حقل 'url' أو 'link'."
+    });
+  }
+
+  const userParam = req.body?.user || req.body?.username || req.query?.user || req.query?.username || null;
+  const startTime = Date.now();
+
+  try {
+    if (!global.bypassDeltaLink) {
+      return res.status(503).json({
+        success: false,
+        code: 'BYPASS_SERVICE_UNAVAILABLE',
+        error: '⚠️ محرك التخطي غير متاح حالياً.'
+      });
+    }
+
+    // Record API key usage
+    if (typeof global.recordApiKeyUsage === 'function') {
+      global.recordApiKeyUsage(auth.key);
+    }
+
+    const resBypass = await global.bypassDeltaLink(targetUrl.trim(), userParam);
+    const timeTaken = ((Date.now() - startTime) / 1000).toFixed(2);
+
+    if (resBypass && resBypass.bypassedLink) {
+      const remainingTimeStr = typeof global.formatRemainingTime === 'function' ? global.formatRemainingTime(auth.keyObj.expiresAt) : undefined;
+      return res.json({
+        success: true,
+        key: resBypass.bypassedLink,
+        result: resBypass.bypassedLink,
+        bypassedLink: resBypass.bypassedLink,
+        timeTaken: `${timeTaken}s`,
+        status: 'completed',
+        provider: resBypass.provider || "Delta / PlatoRelay Engine",
+        meta: {
+          keyName: auth.keyObj.name || "API Key",
+          expiresAt: auth.keyObj.expiresAt,
+          remaining: remainingTimeStr,
+          totalUses: (auth.keyObj.totalUses || 0) + 1
+        }
+      });
+    }
+
+    if (resBypass && (resBypass.isPlatoRelay || resBypass.isGoogleAuthError)) {
+      return res.status(422).json({
+        success: false,
+        code: 'PLATO_GOOGLE_AUTH_REQUIRED',
+        error: "هذا الرابط يتطلب توثيق Google من الفيديو الإرشادي المخصص.",
+        timeTaken: `${timeTaken}s`
+      });
+    }
+
+    return res.status(422).json({
+      success: false,
+      code: 'BYPASS_FAILED',
+      error: resBypass?.error || "فشل تخطي هذا الرابط. يرجى التأكد من صلاحية الرابط.",
+      timeTaken: `${timeTaken}s`
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      code: 'SERVER_EXCEPTION',
+      error: err.message
+    });
+  }
+}
+
+// Routes for Bypass API
+app.get(['/api/bypass', '/api/v1/bypass', '/api/delta/bypass', '/api/platorelay'], handleBypassApiRequest);
+app.post(['/api/bypass', '/api/v1/bypass', '/api/delta/bypass', '/api/platorelay'], handleBypassApiRequest);
+
+// Check Key Status Endpoint
+app.all(['/api/key/status', '/api/v1/key/status'], (req, res) => {
+  const auth = extractAndVerifyApiKey(req);
+  if (!auth.valid) {
+    return res.status(auth.status).json({
+      success: false,
+      code: auth.code,
+      error: auth.error,
+      expiredAt: auth.keyObj?.expiresAt || undefined
+    });
+  }
+
+  const remaining = typeof global.formatRemainingTime === 'function' ? global.formatRemainingTime(auth.keyObj.expiresAt) : 'Active';
+  res.json({
+    success: true,
+    key: auth.key,
+    name: auth.keyObj.name,
+    active: auth.keyObj.active,
+    createdAt: auth.keyObj.createdAt,
+    expiresAt: auth.keyObj.expiresAt,
+    remaining,
+    totalUses: auth.keyObj.totalUses || 0,
+    lastUsedAt: auth.keyObj.lastUsedAt,
+    createdBy: auth.keyObj.createdBy
+  });
+});
+
+// Dashboard Key Management Endpoints (Requires Dashboard Admin Session or Valid Master Access)
+app.get('/api/admin/keys', (req, res) => {
+  // Check if session user exists or header key
+  const keys = typeof global.getApiKeys === 'function' ? global.getApiKeys() : {};
+  const list = Object.values(keys).map(k => ({
+    ...k,
+    remaining: typeof global.formatRemainingTime === 'function' ? global.formatRemainingTime(k.expiresAt) : 'Active',
+    isExpired: k.expiresAt !== 'lifetime' && k.expiresAt && Date.now() > k.expiresAt
+  }));
+  res.json({ success: true, keys: list });
+});
+
+app.post('/api/admin/keys/create', (req, res) => {
+  const { duration, name } = req.body || {};
+  if (typeof global.createApiKey === 'function') {
+    const result = global.createApiKey({ durationStr: duration || '1d', name: name || '', createdBy: 'Dashboard User' });
+    return res.json({ success: true, ...result });
+  }
+  res.status(500).json({ success: false, error: 'Engine not ready' });
+});
+
+app.post('/api/admin/keys/renew', (req, res) => {
+  const { key, duration } = req.body || {};
+  if (typeof global.renewApiKey === 'function') {
+    const result = global.renewApiKey(key, duration);
+    if (result) return res.json({ success: true, ...result });
+    return res.status(404).json({ success: false, error: 'Key not found' });
+  }
+  res.status(500).json({ success: false, error: 'Engine not ready' });
+});
+
+app.post('/api/admin/keys/edit', (req, res) => {
+  const { key, duration } = req.body || {};
+  if (typeof global.editApiKeyDuration === 'function') {
+    const result = global.editApiKeyDuration(key, duration);
+    if (result) return res.json({ success: true, ...result });
+    return res.status(400).json({ success: false, error: 'Failed to edit key duration' });
+  }
+  res.status(500).json({ success: false, error: 'Engine not ready' });
+});
+
+app.post('/api/admin/keys/delete', (req, res) => {
+  const { key } = req.body || {};
+  if (typeof global.deleteApiKey === 'function') {
+    const ok = global.deleteApiKey(key);
+    return res.json({ success: ok });
+  }
+  res.status(500).json({ success: false, error: 'Engine not ready' });
+});
+
+// Serve frontend SPA index.html fallback or status page
+app.get('*', (req, res) => {
+  if (req.path.startsWith('/api')) {
+    return res.status(404).json({ error: 'API route not found' });
+  }
+
+  const distIndex = path.join(__dirname, 'dist', 'index.html');
+  const pubIndex = path.join(__dirname, 'public', 'index.html');
+  const rootIndex = path.join(__dirname, 'index.html');
+
+  try {
+    if (fs.existsSync(distIndex)) {
+      return res.sendFile(distIndex);
+    } else if (fs.existsSync(pubIndex)) {
+      return res.sendFile(pubIndex);
+    } else if (fs.existsSync(rootIndex)) {
+      return res.sendFile(rootIndex);
+    }
+  } catch (e) {
+    // Ignore file read errors and fall back to status page
+  }
+
+  // If running as API backend only without index.html on hosting container
+  return res.status(200).send(`
+    <!DOCTYPE html>
+    <html dir="rtl" lang="ar">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>NTL Bot Server Online</title>
+        <style>
+          body { font-family: system-ui, -apple-system, sans-serif; background: #0b0f19; color: #f1f5f9; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; }
+          .card { background: #131c31; border: 1px solid #1e293b; border-radius: 16px; padding: 32px; max-width: 500px; text-align: center; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5); }
+          .badge { display: inline-flex; align-items: center; gap: 8px; background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 9999px; padding: 6px 14px; font-size: 14px; font-weight: bold; margin-bottom: 20px; }
+          .dot { width: 8px; height: 8px; background: #10b981; border-radius: 50%; box-shadow: 0 0 10px #10b981; }
+          h1 { margin: 0 0 12px; font-size: 24px; color: #38bdf8; }
+          p { color: #94a3b8; font-size: 14px; line-height: 1.6; margin: 0 0 24px; }
+          .info { background: #0f172a; border-radius: 10px; padding: 14px; text-align: left; font-family: monospace; font-size: 13px; color: #cbd5e1; margin-bottom: 24px; direction: ltr; }
+          .btn { display: inline-block; background: #0284c7; color: #fff; text-decoration: none; padding: 12px 24px; border-radius: 10px; font-weight: bold; transition: 0.2s; }
+          .btn:hover { background: #0369a1; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <div class="badge"><span class="dot"></span> السيرفر يعمل بنجاح (Online)</div>
+          <h1>🤖 NTL Bot API & Backend</h1>
+          <p>خادم البوت والواجهة الخلفية متصل وجاهز لاستقبال الطلبات ومعالجة الأوامر.</p>
+          <div class="info">
+            <div><strong>Host:</strong> fi12.bot-hosting.cloud</div>
+            <div><strong>Port:</strong> ${PORT}</div>
+            <div><strong>Status:</strong> HTTP 200 OK</div>
+          </div>
+          <a class="btn" href="https://ntldashboard.pages.dev" target="_blank">فتح لوحة التحكم (Dashboard)</a>
+        </div>
+      </body>
+    </html>
+  `);
 });
 
 // Start listening
