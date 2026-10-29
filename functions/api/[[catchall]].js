@@ -17,7 +17,7 @@ export async function onRequest(context) {
   const pathString = pathArray.join('/');
   
   // 3. Construct the target backend URL exactly like the curl command
-  const targetUrl = `http://fi12.bot-hosting.cloud:25405/api/${pathString}`;
+  const targetUrl = `http://free-bots.heavencloud.in:3647/api/${pathString}`;
   const url = new URL(request.url);
   const fetchUrl = targetUrl + url.search;
 

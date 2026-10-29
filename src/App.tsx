@@ -188,7 +188,7 @@ const DEFAULT_TRACKS: SimulatedTrack[] = [
 
 export default function App() {
   // Navigation Active Tab
-  const [activeTab, setActiveTab] = useState<"tickets" | "moderation" | "sticky_panels" | "protection" | "suggestions" | "delta" | "azkar" | "music" | "broadcast" | "logs" | "privacy">("tickets");
+  const [activeTab, setActiveTab] = useState<"tickets" | "moderation" | "sticky_panels" | "protection" | "suggestions" | "delta" | "azkar" | "music" | "broadcast" | "logs" | "privacy" | "server_settings">("tickets");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Guild Selection State
@@ -1011,6 +1011,21 @@ export default function App() {
             </div>
           </button>
 
+          {/* Server Settings Navigation Button */}
+          <button
+            onClick={() => { setActiveTab("server_settings"); setMobileMenuOpen(false); }}
+            className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-between cursor-pointer ${
+              activeTab === "server_settings"
+                ? "bg-[#5865f2] text-white shadow-md scale-[1.02]"
+                : "text-slate-300 hover:bg-[#35373c] hover:text-white"
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <Settings className="w-4 h-4 text-cyan-300" />
+              <span>إعدادات السيرفر</span>
+            </div>
+          </button>
+
           {/* Privacy & Terms Navigation Button */}
           <button
             onClick={() => { setActiveTab("privacy"); setMobileMenuOpen(false); }}
@@ -1054,7 +1069,7 @@ export default function App() {
           <div className="flex items-center gap-3">
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden text-gray-300 hover:text-white p-1"
+              className="text-gray-300 hover:text-white p-1 rounded-lg hover:bg-white/10"
             >
               <Menu className="w-6 h-6" />
             </button>
@@ -1069,6 +1084,7 @@ export default function App() {
               {activeTab === "broadcast" && <><Send className="w-5 h-5 text-blue-400" /><span>إرسال إعلان مباشر لرومات السيرفر</span></>}
               {activeTab === "logs" && <><FileText className="w-5 h-5 text-rose-400" /><span>سجلات البوت والنشاط اللحظي</span></>}
               {activeTab === "privacy" && <><Lock className="w-5 h-5 text-emerald-400" /><span>سياسة الخصوصية وشروط الاستخدام (Privacy & Terms)</span></>}
+              {activeTab === "server_settings" && <><Settings className="w-5 h-5 text-cyan-300" /><span>إعدادات السيرفر</span></>}
             </h2>
           </div>
 
@@ -2489,6 +2505,43 @@ export default function App() {
                 </div>
               )}
 
+            </div>
+          )}
+
+          {/* ========================================================= */}
+          {/* SERVER SETTINGS TAB                                      */}
+          {/* ========================================================= */}
+          {activeTab === "server_settings" && (
+            <div className="max-w-4xl mx-auto space-y-6 text-right" dir="rtl">
+              <section className="rounded-2xl border border-white/10 bg-slate-900/60 backdrop-blur-xl p-6 md:p-8 shadow-xl">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="rounded-xl bg-cyan-400/10 p-3"><Settings className="w-6 h-6 text-cyan-300" /></div>
+                  <div>
+                    <h3 className="text-xl font-extrabold text-white">إعدادات السيرفر</h3>
+                    <p className="text-sm text-slate-400">إدارة السيرفر المحدد وحفظ إعداداته من مكان واحد.</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                    <p className="text-xs text-slate-400 mb-1">السيرفر المحدد</p>
+                    <p className="font-bold text-white break-words">{guilds.find((g) => g.id === selectedGuildId)?.name || "لم يتم اختيار سيرفر"}</p>
+                    <p className="text-xs text-slate-500 mt-1">ID: {selectedGuildId || "—"}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                    <p className="text-xs text-slate-400 mb-1">حالة البوت</p>
+                    <p className={`font-bold ${hasBot ? "text-emerald-300" : "text-amber-300"}`}>{hasBot ? "البوت متصل بالسيرفر" : "البوت غير موجود بالسيرفر"}</p>
+                    <p className="text-xs text-slate-500 mt-1">{guildStats.memberCount} عضو</p>
+                  </div>
+                </div>
+                <div className="mt-5 flex flex-wrap gap-3">
+                  <button onClick={() => handleSaveAll()} disabled={isSaving} className="rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 px-5 py-2.5 text-sm font-bold text-white flex items-center gap-2">
+                    <Check className="w-4 h-4" /> {isSaving ? "جاري الحفظ..." : "حفظ جميع التعديلات"}
+                  </button>
+                  <button onClick={() => setMobileMenuOpen(true)} className="rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 px-5 py-2.5 text-sm font-bold text-white flex items-center gap-2">
+                    <Menu className="w-4 h-4" /> عرض قائمة الأنظمة
+                  </button>
+                </div>
+              </section>
             </div>
           )}
 

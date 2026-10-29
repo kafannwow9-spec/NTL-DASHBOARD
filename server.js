@@ -375,11 +375,11 @@ function getMergedConfig() {
   const CLIENT_SECRET = fileConfig.CLIENT_SECRET || process.env.CLIENT_SECRET || "";
   const BOT_TOKEN = fileConfig.BOT_TOKEN || process.env.BOT_TOKEN || "";
   const BOT_SECRET = fileConfig.BOT_SECRET || process.env.BOT_SECRET || "38dj38nr89oq";
-  const BOT_SERVER_URL = fileConfig.BOT_SERVER_URL || process.env.BOT_SERVER_URL || "http://fi12.bot-hosting.cloud:25405";
+  const BOT_SERVER_URL = fileConfig.BOT_SERVER_URL || process.env.BOT_SERVER_URL || "http://free-bots.heavencloud.in:3647";
 
   const rawAppUrl = process.env.APP_URL || "";
   const cleanAppUrl = rawAppUrl.endsWith('/') ? rawAppUrl.slice(0, -1) : rawAppUrl;
-  const REDIRECT_URI = fileConfig.REDIRECT_URI || process.env.REDIRECT_URI || (cleanAppUrl ? `${cleanAppUrl}/auth/callback` : "http://fi12.bot-hosting.cloud:25405/auth/callback");
+  const REDIRECT_URI = fileConfig.REDIRECT_URI || process.env.REDIRECT_URI || (cleanAppUrl ? `${cleanAppUrl}/auth/callback` : "http://free-bots.heavencloud.in:3647/auth/callback");
 
   return {
     CLIENT_ID,

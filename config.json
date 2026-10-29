@@ -12,7 +12,7 @@
   "additionalBots": [
     "./secondBot.js"
   ],
-  "BOT_IP_PORT": "fi12.bot-hosting.cloud:25405",
+  "BOT_IP_PORT": "free-bots.heavencloud.in:3647",
   "BOT_SECRET": "38dj38nr89oq",
   "guilds": {
     "1179136470750068766": {

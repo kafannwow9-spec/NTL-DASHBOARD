@@ -395,6 +395,62 @@
       animation: slideRight 0.25s ease-out forwards;
     }
   </style>
+
+<style id="ntl-glass-redesign">
+:root {
+ --ntl-glass: rgba(16, 22, 38, .76);
+ --ntl-glass-strong: rgba(12, 18, 32, .92);
+ --ntl-glass-line: rgba(170, 190, 255, .15);
+ --ntl-accent: #8b7cff;
+ --ntl-accent-2: #42d8f5;
+}
+body {
+ background-color:#070b15 !important;
+ background-image:
+   radial-gradient(ellipse at 12% 0%,rgba(110,88,255,.22),transparent 38%),
+   radial-gradient(ellipse at 88% 16%,rgba(44,196,238,.13),transparent 32%),
+   linear-gradient(145deg,#070b15,#0b1020 58%,#070b15) !important;
+}
+header > div, #dots-dropdown, #settings-dropdown, aside, nav,
+#primary-drawer, #drawer-connected-server-panel, .modal-container,
+.dashboard-card, .glass-3d-card, .server-card, .dark-glass-card,
+.glass-card, .frosted-glass, .prompt-container {
+ background:linear-gradient(145deg,rgba(24,32,54,.82),rgba(10,15,27,.76)) !important;
+ border:1px solid var(--ntl-glass-line) !important;
+ box-shadow:0 18px 48px rgba(0,0,0,.34),inset 0 1px 0 rgba(255,255,255,.055) !important;
+ backdrop-filter:blur(22px) saturate(150%) !important;
+ -webkit-backdrop-filter:blur(22px) saturate(150%) !important;
+}
+.dashboard-card,.glass-3d-card,.server-card,.dark-glass-card,.glass-card,
+.frosted-glass,.prompt-container { border-radius:20px !important; }
+button:not(.no-glass),.btn,.glass-btn,.btn-glass {
+ border-radius:12px !important;
+ transition:background .18s ease,border-color .18s ease,transform .18s ease,box-shadow .18s ease !important;
+}
+button:hover:not(:disabled),.btn:hover,.glass-btn:hover,.btn-glass:hover {
+ border-color:rgba(139,124,255,.38) !important;
+ transform:translateY(-1px);
+}
+input,select,textarea {
+ border-radius:12px !important;
+ background:rgba(5,10,20,.68) !important;
+ border-color:rgba(170,190,255,.16) !important;
+}
+#dots-dropdown,#settings-dropdown {
+ border-radius:18px !important;
+ padding:10px !important;
+}
+#dots-dropdown a,#dots-dropdown button,#settings-dropdown a,#settings-dropdown button {
+ border-radius:12px !important;
+}
+main,section { scroll-margin-top:84px; }
+@media(max-width:768px) {
+ header { padding:10px 12px !important; }
+ header > div { border-radius:16px !important; }
+ .dashboard-card,.glass-3d-card,.server-card,.dark-glass-card { border-radius:16px !important; }
+}
+</style>
+
 </head>
 <body class="bg-[rgba(0,0,0,0.2)] text-slate-100 min-h-screen flex flex-col relative overflow-x-hidden selection:bg-purple-600 selection:text-white">
 
@@ -2386,7 +2442,7 @@
         customHost = window.location.origin;
       } else if (!customHost || customHost.trim() === '') {
         if (window.location.hostname.includes('github.io')) {
-          customHost = 'http://fi12.bot-hosting.cloud:25405';
+          customHost = 'http://free-bots.heavencloud.in:3647';
         } else {
           customHost = window.location.origin;
         }
