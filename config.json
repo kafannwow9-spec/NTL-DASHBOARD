@@ -12,7 +12,7 @@
   "additionalBots": [
     "./secondBot.js"
   ],
-  "BOT_IP_PORT": "us-lax02.altare.global:25147",
+  "BOT_IP_PORT": "free-bots.heavencloud.in:3647",
   "BOT_SECRET": "38dj38nr89oq",
   "guilds": {
     "1179136470750068766": {
