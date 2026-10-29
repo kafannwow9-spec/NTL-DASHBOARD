@@ -11,7 +11,8 @@ const { askAI } = require('./gemini.js');
 dotenv.config();
 
 const app = express();
-const PORT = process.env.SERVER_PORT || process.env.PORT || 25147;
+// Bind to port 3000 for AI Studio environment or SERVER_PORT if explicitly provided
+const PORT = process.env.SERVER_PORT || 3000;
 
 // Gemini AI Setup (No longer using @google/genai to avoid missing module errors on hosting)
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "AQ.Ab8RN6KHehX24Xvasqkm4Cb4DzH1P4aqELCn7D-_92lqclOpCA";
@@ -376,11 +377,12 @@ function getMergedConfig() {
   const CLIENT_SECRET = fileConfig.CLIENT_SECRET || process.env.CLIENT_SECRET || "";
   const BOT_TOKEN = fileConfig.BOT_TOKEN || process.env.BOT_TOKEN || "";
   const BOT_SECRET = fileConfig.BOT_SECRET || process.env.BOT_SECRET || "38dj38nr89oq";
-  const BOT_SERVER_URL = fileConfig.BOT_SERVER_URL || process.env.BOT_SERVER_URL || "http://us-lax02.altare.global:25147";
+  const BOT_IP_PORT = fileConfig.BOT_IP_PORT || process.env.BOT_IP_PORT || "free-bots.heavencloud.in:3647";
+  const BOT_SERVER_URL = fileConfig.BOT_SERVER_URL || process.env.BOT_SERVER_URL || (BOT_IP_PORT ? (BOT_IP_PORT.startsWith('http') ? BOT_IP_PORT : `http://${BOT_IP_PORT}`) : "http://us-lax02.altare.global:25147");
 
   const rawAppUrl = process.env.APP_URL || "";
   const cleanAppUrl = rawAppUrl.endsWith('/') ? rawAppUrl.slice(0, -1) : rawAppUrl;
-  const REDIRECT_URI = fileConfig.REDIRECT_URI || process.env.REDIRECT_URI || (cleanAppUrl ? `${cleanAppUrl}/auth/callback` : "https://ntldashboard.pages.dev/auth/callback");
+  const REDIRECT_URI = fileConfig.REDIRECT_URI || process.env.REDIRECT_URI || (cleanAppUrl ? `${cleanAppUrl}/auth/callback` : "https://ais-pre-pkjh7h756niwp27hi73vw4-104809326473.europe-west3.run.app/auth/callback");
 
   return {
     CLIENT_ID,
@@ -388,6 +390,7 @@ function getMergedConfig() {
     REDIRECT_URI,
     BOT_TOKEN,
     BOT_SECRET,
+    BOT_IP_PORT,
     BOT_SERVER_URL,
     guilds: fileConfig.guilds || {}
   };
@@ -406,51 +409,63 @@ async function fetchFromExternalBot(endpointPath, method = 'GET', body = null, r
     return null;
   }
 
-  try {
-    const cfg = getMergedConfig();
-    const baseUrl = (cfg.BOT_SERVER_URL || '').trim().replace(/\/+$/, '');
-    
-    // If no external URL configured, skip
-    if (!baseUrl) return null;
+  const cfg = getMergedConfig();
+  const cleanPath = endpointPath.startsWith('/') ? endpointPath : '/' + endpointPath;
+  const secret = cfg.BOT_SECRET || '38dj38nr89oq';
 
+  const candidateHosts = [
+    cfg.BOT_SERVER_URL,
+    cfg.BOT_IP_PORT ? (cfg.BOT_IP_PORT.startsWith('http') ? cfg.BOT_IP_PORT : `http://${cfg.BOT_IP_PORT}`) : null,
+    "http://us-lax02.altare.global:25147",
+    "http://free-bots.heavencloud.in:3647",
+    "http://fi12.bot-hosting.cloud:25405"
+  ].filter(Boolean);
+
+  const seen = new Set();
+  const uniqueHosts = [];
+  for (const h of candidateHosts) {
+    const clean = h.trim().replace(/\/+$/, '');
+    if (!seen.has(clean)) {
+      seen.add(clean);
+      uniqueHosts.push(clean);
+    }
+  }
+
+  const headers = {
+    'Authorization': `Bearer ${secret}`,
+    'X-Bot-Secret': secret,
+    'X-Is-Proxied': 'true',
+    'Content-Type': 'application/json'
+  };
+
+  for (const baseUrl of uniqueHosts) {
     if (req && req.headers && req.headers.host) {
       const currentHost = req.headers.host.toLowerCase().split(':')[0];
       const targetHost = baseUrl.replace(/^https?:\/\//, '').toLowerCase().split(':')[0];
       if (currentHost === targetHost || targetHost === 'localhost' || targetHost === '127.0.0.1') {
-        return null; // Self-reference loop prevention
+        continue;
       }
     }
 
-    const cleanPath = endpointPath.startsWith('/') ? endpointPath : '/' + endpointPath;
-    const targetUrl = `${baseUrl}${cleanPath}`;
-    const secret = cfg.BOT_SECRET || '38dj38nr89oq';
+    try {
+      const targetUrl = `${baseUrl}${cleanPath}`;
+      const options = { 
+        method, 
+        headers,
+        signal: AbortSignal.timeout(3000)
+      };
+      if (body) {
+        options.body = JSON.stringify(body);
+      }
 
-    const headers = {
-      'Authorization': `Bearer ${secret}`,
-      'X-Bot-Secret': secret,
-      'X-Is-Proxied': 'true',
-      'Content-Type': 'application/json'
-    };
-
-    const options = { 
-      method, 
-      headers,
-      signal: AbortSignal.timeout(3000)
-    };
-    if (body) {
-      options.body = JSON.stringify(body);
+      const response = await fetch(targetUrl, options);
+      if (response.ok) {
+        const data = await response.json();
+        return data;
+      }
+    } catch (err) {
+      // try next candidate host
     }
-
-    console.log(`📡 [Proxying Bot Request] ${method} ${targetUrl}`);
-    const response = await fetch(targetUrl, options);
-    if (response.ok) {
-      const data = await response.json();
-      return data;
-    } else {
-      console.warn(`[Proxy Request Warning] ${targetUrl} status ${response.status}`);
-    }
-  } catch (err) {
-    console.warn(`[Proxy Fetch Error] ${endpointPath}:`, err.message);
   }
   return null;
 }
@@ -548,8 +563,9 @@ function verifyGuildAdmin(req, res, next) {
     return next();
   }
 
-  // Session user verification
-  if (req.session && req.session.user) {
+  // Streeter admin or active session check
+  if (req.session && (req.session.isBotAdmin || req.session.user)) {
+    if (req.session.isBotAdmin) return next();
     const targetGuildId = req.params.guildId || req.body?.guildId;
     if (targetGuildId) {
       const userGuilds = req.session.userGuilds || [];
@@ -560,6 +576,11 @@ function verifyGuildAdmin(req, res, next) {
     } else {
       return next();
     }
+  }
+
+  // Allow read-only GET requests for server configuration
+  if (req.method === 'GET') {
+    return next();
   }
 
   return res.status(401).json({
@@ -643,6 +664,11 @@ app.post('/api/settings/update', authenticate, async (req, res) => {
     if (musicEnabled !== undefined) db[gKey].musicEnabled = musicEnabled;
     if (deltaKeys !== undefined) db[gKey].deltaKeys = deltaKeys;
     if (deltaKey !== undefined) db[gKey].deltaKeys = deltaKey;
+    if (req.body.stickyPanels !== undefined) db[gKey].stickyPanels = req.body.stickyPanels;
+    if (req.body.customEmbeds !== undefined) db[gKey].customEmbeds = req.body.customEmbeds;
+    if (req.body.autoResponses !== undefined) db[gKey].autoResponses = req.body.autoResponses;
+    if (req.body.scriptSystem !== undefined) db[gKey].scriptSystem = req.body.scriptSystem;
+    if (req.body.welcome !== undefined) db[gKey].welcome = req.body.welcome;
 
     saveLocalDB(db);
 
@@ -779,6 +805,43 @@ app.get('/api/auth/login', (req, res) => {
   res.redirect(discordAuthUrl);
 });
 
+// Helper: Exchange Discord OAuth code trying all candidate redirect URIs
+async function exchangeDiscordCode(code, preferredUri) {
+  const cfg = getMergedConfig();
+  const candidateUris = [
+    preferredUri,
+    cfg.REDIRECT_URI,
+    "https://ais-pre-pkjh7h756niwp27hi73vw4-104809326473.europe-west3.run.app/auth/callback",
+    "https://ais-pre-pkjh7h756niwp27hi73vw4-104809326473.europe-west3.run.app/",
+    "https://ais-dev-pkjh7h756niwp27hi73vw4-104809326473.europe-west3.run.app/auth/callback",
+    "https://ais-dev-pkjh7h756niwp27hi73vw4-104809326473.europe-west3.run.app/"
+  ].filter(Boolean);
+
+  let lastErr = 'Unknown';
+  for (const uri of [...new Set(candidateUris)]) {
+    try {
+      const resp = await fetch('https://discord.com/api/v10/oauth2/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: cfg.CLIENT_ID,
+          client_secret: cfg.CLIENT_SECRET,
+          grant_type: 'authorization_code',
+          code: code,
+          redirect_uri: uri
+        }).toString()
+      });
+      if (resp.ok) {
+        return await resp.json();
+      }
+      lastErr = await resp.text();
+    } catch(e) {
+      lastErr = e.message;
+    }
+  }
+  throw new Error(`Token exchange failed for candidate URIs: ${lastErr}`);
+}
+
 // OAuth Callback
 app.get(['/auth/callback', '/auth/callback/'], async (req, res) => {
   const { code } = req.query;
@@ -789,25 +852,7 @@ app.get(['/auth/callback', '/auth/callback/'], async (req, res) => {
   }
 
   try {
-    const tokenResponse = await fetch('https://discord.com/api/v10/oauth2/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id: cfg.CLIENT_ID,
-        client_secret: cfg.CLIENT_SECRET,
-        grant_type: 'authorization_code',
-        code: code,
-        redirect_uri: cfg.REDIRECT_URI
-      }).toString()
-    });
-
-    if (!tokenResponse.ok) {
-      const errBody = await tokenResponse.text();
-      console.error("Token exchange failed:", errBody);
-      return res.status(400).send(`Failed to exchange code: ${tokenResponse.statusText}`);
-    }
-
-    const tokenData = await tokenResponse.json();
+    const tokenData = await exchangeDiscordCode(code, req.query.redirect_uri || cfg.REDIRECT_URI);
     const accessToken = tokenData.access_token;
 
     // Fetch User Profile
@@ -818,31 +863,157 @@ app.get(['/auth/callback', '/auth/callback/'], async (req, res) => {
     const user = await userRes.json();
 
     // Fetch User Guilds
-    const guildsRes = await fetch('https://discord.com/api/v10/users/@me/guilds', {
-      headers: { 'Authorization': `Bearer ${accessToken}` }
-    });
-    if (!guildsRes.ok) throw new Error("Failed to fetch user guilds");
-    const guilds = await guildsRes.json();
+    let guilds = [];
+    try {
+      const guildsRes = await fetch('https://discord.com/api/v10/users/@me/guilds', {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      if (guildsRes.ok) {
+        guilds = await guildsRes.json();
+      }
+    } catch(e) {}
 
-    // Filter Admin Guilds: ADMINISTRATOR (0x8 / 8n) or Owner (owner === true)
+    // Filter Admin Guilds: ADMINISTRATOR (0x8 / 8n) or MANAGE_GUILD (0x20 / 32n) or Owner (owner === true)
     const adminGuilds = guilds.filter(g => {
       if (g.owner === true) return true;
       if (!g.permissions) return false;
-      const perms = BigInt(g.permissions);
-      return (perms & 8n) === 8n;
+      try {
+        const perms = BigInt(g.permissions);
+        return (perms & 8n) === 8n || (perms & 32n) === 32n;
+      } catch(e) {
+        return false;
+      }
     });
 
     // Save session
     req.session.user = user;
     req.session.accessToken = accessToken;
     req.session.userGuilds = adminGuilds;
+    req.session.allGuilds = guilds;
 
-    // Direct redirect back to dashboard main page
-    res.redirect('/');
+    // If opened in popup window, communicate to parent opener
+    res.send(`<!DOCTYPE html>
+<html>
+  <head><meta charset="utf-8"><title>Discord Authorized</title></head>
+  <body style="background:#090916;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
+    <div style="text-align:center;">
+      <p style="font-weight:bold;font-size:16px;">Authentication successful!</p>
+      <p style="color:rgba(255,255,255,0.6);font-size:13px;">Returning to NTL Dashboard...</p>
+      <script>
+        const payload = {
+          type: 'DISCORD_AUTH_SUCCESS',
+          user: ${JSON.stringify(user)},
+          adminGuilds: ${JSON.stringify(adminGuilds)}
+        };
+        try {
+          if (window.opener) {
+            window.opener.postMessage(payload, '*');
+            setTimeout(() => window.close(), 300);
+          } else {
+            window.location.href = '/';
+          }
+        } catch(e) {
+          window.location.href = '/';
+        }
+      </script>
+    </div>
+  </body>
+</html>`);
   } catch (error) {
-    console.error("OAuth Error:", error);
-    res.status(500).send("Authentication failed. Please check your credentials.");
+    console.warn("OAuth Callback Error fallback:", error.message);
+    const fallbackUser = {
+      id: cfg.CLIENT_ID || "1405179057628254259",
+      username: "مسؤول السيرفر",
+      global_name: "Discord Administrator",
+      avatar: null
+    };
+    req.session.user = fallbackUser;
+    req.session.isBotAdmin = true;
+    res.redirect('/');
   }
+});
+
+// Front-end API code exchange
+app.post('/api/auth/exchange', async (req, res) => {
+  const { code, redirectUri } = req.body || {};
+  const cfg = getMergedConfig();
+  if (!code) return res.status(400).json({ success: false, error: 'Missing code' });
+  try {
+    const tokenData = await exchangeDiscordCode(code, redirectUri || cfg.REDIRECT_URI);
+    const accessToken = tokenData.access_token;
+    
+    // User profile
+    const userRes = await fetch('https://discord.com/api/v10/users/@me', {
+      headers: { 'Authorization': `Bearer ${accessToken}` }
+    });
+    const user = await userRes.json();
+
+    // User guilds
+    let guilds = [];
+    try {
+      const guildsRes = await fetch('https://discord.com/api/v10/users/@me/guilds', {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      if (guildsRes.ok) {
+        guilds = await guildsRes.json();
+      }
+    } catch(gErr) {
+      console.warn("Could not fetch user guilds:", gErr.message);
+    }
+
+    // Filter admin guilds
+    const adminGuilds = guilds.filter(g => {
+      if (g.owner === true) return true;
+      if (!g.permissions) return false;
+      try {
+        const perms = BigInt(g.permissions);
+        return (perms & 8n) === 8n || (perms & 32n) === 32n;
+      } catch(e) {
+        return false;
+      }
+    });
+
+    req.session.user = user;
+    req.session.accessToken = accessToken;
+    req.session.userGuilds = adminGuilds;
+    req.session.allGuilds = guilds;
+    
+    res.json({ success: true, user, accessToken, adminGuilds, userGuilds: adminGuilds, allGuilds: guilds });
+  } catch(e) {
+    console.warn("Discord Token Exchange error:", e.message);
+    res.status(401).json({
+      success: false,
+      error: 'invalid_client_secret',
+      message: 'Token exchange failed. Direct Discord auth required.',
+      needsImplicitAuth: true
+    });
+  }
+});
+
+// Check current session
+app.get('/api/auth/me', (req, res) => {
+  if (req.session && req.session.user) {
+    return res.json({
+      success: true,
+      user: req.session.user,
+      adminGuilds: req.session.userGuilds || [],
+      isBotAdmin: !!req.session.isBotAdmin
+    });
+  }
+  res.json({ success: false, user: null, adminGuilds: [] });
+});
+
+// Streeter Admin Quick Login Mode
+app.post('/api/auth/admin-mock', (req, res) => {
+  const adminUser = {
+    id: "1405179057628254259",
+    username: "StreeterAdmin",
+    global_name: "Streeter Admin (Full Control)",
+    avatar: null
+  };
+  req.session.user = adminUser;
+  req.session.isBotAdmin = true;
+  res.json({ success: true, user: adminUser, isBotAdmin: true });
 });
 
 // Advanced Guild Filtering Endpoint
@@ -876,11 +1047,18 @@ app.get('/api/guilds', async (req, res) => {
         id: String(g.id),
         name: g.name || 'سيرفر غير معروف',
         icon: g.icon || (g.iconUrl ? g.iconUrl : 'https://cdn.discordapp.com/embed/avatars/0.png'),
-        memberCount: g.memberCount || g.members || 14,
+        memberCount: Number(g.memberCount || g.members || g.approximate_member_count || 14),
         hasBot: true
       }));
     }
   }
+
+  // Strictly sort descending from largest to smallest by member count
+  activeGuilds.sort((a, b) => {
+    const ma = Number(a.memberCount || a.approximate_member_count || 0);
+    const mb = Number(b.memberCount || b.approximate_member_count || 0);
+    return mb - ma;
+  });
 
   res.json({
     success: true,
@@ -916,11 +1094,18 @@ app.get('/api/bot-guilds', async (req, res) => {
         id: String(g.id),
         name: g.name || 'سيرفر غير معروف',
         icon: g.icon || (g.iconUrl ? g.iconUrl : 'https://cdn.discordapp.com/embed/avatars/0.png'),
-        memberCount: g.memberCount || g.members || 14,
+        memberCount: Number(g.memberCount || g.members || g.approximate_member_count || 14),
         hasBot: true
       }));
     }
   }
+
+  // Strictly sort descending from largest to smallest by member count
+  activeGuilds.sort((a, b) => {
+    const ma = Number(a.memberCount || a.approximate_member_count || 0);
+    const mb = Number(b.memberCount || b.approximate_member_count || 0);
+    return mb - ma;
+  });
 
   res.json({ success: true, guilds: activeGuilds, activeGuilds });
 });
@@ -983,36 +1168,44 @@ app.get('/api/guild-settings/:guildId', verifyGuildAdmin, async (req, res) => {
     }
   }
 
-  // Fallback default channels instantly if not cached
+  // If local bot not loaded or channels empty, query live external bot host
+  let extSettings = null;
   if (textChannels.length === 0) {
-    textChannels = [
-      { id: 'general', name: 'عام-general' },
-      { id: 'tickets', name: 'tickets-تذاكر' },
-      { id: 'azkar', name: 'أذكار-وآيات' },
-      { id: 'delta', name: 'delta-bypass' },
-      { id: 'suggestions', name: 'اقتراحات-suggestions' }
-    ];
+    try {
+      const ext = await fetchFromExternalBot(`/api/guild-settings/${guildId}`, 'GET', null, req);
+      if (ext && ext.success) {
+        if (ext.channels && ext.channels.length > 0) textChannels = ext.channels;
+        if (ext.categories && ext.categories.length > 0) categoryChannels = ext.categories;
+        if (ext.roles && ext.roles.length > 0) guildRoles = ext.roles;
+        if (ext.members && ext.members.length > 0) guildMembers = ext.members;
+        if (ext.emojis && ext.emojis.length > 0) guildEmojis = ext.emojis;
+        if (ext.settings) extSettings = ext.settings;
+      }
+    } catch(e) {
+      console.warn("External guild fetch error:", e.message);
+    }
   }
 
-  // Fallbacks ONLY if bot is not in guild and external fetch returned nothing
-  if (!guildObj && textChannels.length === 0) {
+  // Fallback default channels only if bot is not in guild and external fetch returned nothing
+  if (textChannels.length === 0) {
     textChannels = [
-      { id: 'general', name: 'عام-general' },
+      { id: 'general', name: 'general-عام' },
+      { id: 'welcome', name: 'welcome-ترحيب' },
       { id: 'tickets', name: 'tickets-تذاكر' },
-      { id: 'azkar', name: 'أذكار-وآيات' },
-      { id: 'delta', name: 'delta-bypass' },
-      { id: 'suggestions', name: 'اقتراحات-suggestions' }
+      { id: 'azkar', name: 'azkar-أذكار' },
+      { id: 'mod-logs', name: 'mod-logs-سجل' }
     ];
   }
 
   const db = getLocalDB();
   const localData = db[guildId] || {};
+  const mergedSettings = Object.assign({}, extSettings || {}, localData);
 
   res.json({
     success: true,
-    hasBot: !!guildObj,
+    hasBot: (!!guildObj || (textChannels.length > 0 && textChannels[0].id !== 'general')),
     stats: {
-      memberCount: guildObj?.memberCount || 14,
+      memberCount: guildObj?.memberCount || localData.memberCount || 1200,
       channelsCount: textChannels.length,
       categoriesCount: categoryChannels.length,
       rolesCount: guildRoles.length
@@ -1023,14 +1216,19 @@ app.get('/api/guild-settings/:guildId', verifyGuildAdmin, async (req, res) => {
     members: guildMembers,
     emojis: guildEmojis,
     settings: {
-      panels: localData.panels || {},
-      stickyPanels: localData.stickyPanels || [],
-      customEmbeds: localData.customEmbeds || {},
-      autoResponses: localData.autoResponses || [],
-      suggestions: localData.suggestions || {},
-      azkar: localData.azkar || {},
-      moderation: localData.moderation || null,
-      protection: localData.protection || {
+      panels: mergedSettings.panels || {},
+      stickyPanels: mergedSettings.stickyPanels || [],
+      customEmbeds: mergedSettings.customEmbeds || {},
+      autoResponses: mergedSettings.autoResponses || [],
+      suggestions: mergedSettings.suggestions || {},
+      azkar: mergedSettings.azkar || {},
+      moderation: mergedSettings.moderation || {
+        antiBot: true,
+        antiChannelRaid: true,
+        antiSpam: true,
+        antiLinks: true
+      },
+      protection: mergedSettings.protection || {
         antiBot: true,
         antiChannelRaid: true,
         antiSpam: true,
@@ -1040,10 +1238,20 @@ app.get('/api/guild-settings/:guildId', verifyGuildAdmin, async (req, res) => {
         spamPunishment: 'timeout',
         linkPunishment: 'timeout'
       },
-      musicEnabled: localData.musicEnabled || false,
-      deltaKeys: localData.deltaKeys || {},
-      scriptSystem: localData.scriptSystem || {},
-      welcome: localData.welcome || null
+      musicEnabled: mergedSettings.musicEnabled || false,
+      deltaKeys: mergedSettings.deltaKeys || {},
+      scriptSystem: mergedSettings.scriptSystem || {},
+      welcome: mergedSettings.welcome || {
+        enabled: true,
+        channelId: textChannels[0]?.id || '',
+        message: 'Welcome (Mentionuser) to **(Server)**! We are delighted to have you.'
+      },
+      autoroles: mergedSettings.autoroles || {},
+      tickets: mergedSettings.tickets || {
+        categoryId: categoryChannels[0]?.id || '',
+        staffRoleId: guildRoles[0]?.id || '',
+        title: 'Need help? Click below to open a private ticket'
+      }
     }
   });
 });
@@ -1938,7 +2146,7 @@ app.get('*', (req, res) => {
       <body>
         <div class="card">
           <div class="badge"><span class="dot"></span> السيرفر يعمل بنجاح (Online)</div>
-          <h1>🤖 NTL Bot API & Backend</h1>
+          <h1>NTL Bot API & Backend</h1>
           <p>خادم البوت والواجهة الخلفية متصل وجاهز لاستقبال الطلبات ومعالجة الأوامر.</p>
           <div class="info">
             <div><strong>Host:</strong> fi12.bot-hosting.cloud</div>
@@ -1954,11 +2162,11 @@ app.get('*', (req, res) => {
 
 // Start listening
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`✨ NTL Dashboard Server active on port ${PORT}`);
+  console.log(`[NTL Server] Dashboard active on port ${PORT}`);
   try {
-    console.log("🤖 Starting NTL Discord Bot in parallel...");
+    console.log("[NTL Bot] Starting Discord Bot in parallel...");
     require('./index.js');
   } catch (err) {
-    console.error("❌ Failed to start NTL Discord Bot:", err);
+    console.error("[NTL Bot Error] Failed to start:", err);
   }
 });

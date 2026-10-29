@@ -433,7 +433,10 @@ export default function App() {
       },
       signal: controller.signal
     })
-      .then((res) => res.json())
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}: تعذر جلب إعدادات السيرفر`);
+        return res.json();
+      })
       .then((data) => {
         clearTimeout(timeoutId);
         if (data.success) {
@@ -493,13 +496,13 @@ export default function App() {
               name: pObj.name || `بانل ${pId}`,
               channelId: pObj.channelId || defaultChannelId,
               categoryId: pObj.categoryId || defaultCategoryId,
-              supportRoleId: pObj.supportRoleId || defaultRoleId,
+              supportRoleId: pObj.supportRoleId || pObj.staffRoleId || pObj.roleId || defaultRoleId,
               title: pObj.title || "🎫 قسم الدعم الفني",
-              description: pObj.description || "اضغط على الزر لفتح تكت جديد.",
+              description: pObj.description || pObj.desc || "اضغط على الزر لفتح تكت جديد.",
               color: pObj.color || "#5865f2",
-              buttonText: pObj.buttonText || "فتح تكت",
-              buttonEmoji: pObj.buttonEmoji || "📩",
-              buttonStyle: pObj.buttonStyle || "Primary"
+              buttonText: pObj.buttonText || pObj.buttonLabel || pObj.buttons?.[0]?.name || "فتح تكت",
+              buttonEmoji: pObj.buttonEmoji || pObj.buttons?.[0]?.emoji || "📩",
+              buttonStyle: pObj.buttonStyle || pObj.buttons?.[0]?.style || "Primary"
             }));
             setTicketPanels(panelsArray);
           } else {
@@ -595,6 +598,7 @@ export default function App() {
         }
       })
       .catch((err) => {
+        clearTimeout(timeoutId);
         console.error("Error fetching guild settings:", err);
         addConsoleLog("API_SERVER", "error", "❌ خطأ في استجابة إعدادات السيرفر", err.message);
       });
