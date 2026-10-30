@@ -1,12 +1,11 @@
-const cloudscraper = require('cloudscraper');
 const crypto = require('crypto');
 const axios = require('axios');
 const WebSocket = require('ws');
 
-const DEFAULT_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
-const UA_ZW_SUFFIX = "";
+const DEFAULT_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
+const UA_ZW_SUFFIX = "\u200b\u2060\u200c";
 const CLIENT_NAME = "platoboost webclient";
-const CLIENT_VERSION = "8.1.1";
+const CLIENT_VERSION = "5.3.2";
 
 const SERVICE_LINKVERTISE = 1;
 const SERVICE_LOOTLINKS = 2;
@@ -300,16 +299,17 @@ function buildStepBody(ticket, captcha, resolved = true) {
 
 async function oneShotCaptcha(origin) {
     try {
-        const res = await axios.get(`${origin}/api/challenge`, {
+        const res = await fetch(`${origin}/api/challenge`, {
             headers: {
                 'User-Agent': DEFAULT_UA,
                 'Origin': 'https://auth.platorelay.com',
                 'Referer': 'https://auth.platorelay.com/',
                 'Accept': 'application/json'
             },
-            timeout: 8000
+            signal: AbortSignal.timeout(8000)
         });
-        const ch = res.data;
+        if (!res.ok) return null;
+        const ch = await res.json().catch(() => null);
         if (!ch || !ch.challenge_id) return null;
 
         const cid = ch.challenge_id;
@@ -332,7 +332,8 @@ async function oneShotCaptcha(origin) {
             y = Math.floor(h * 0.5 + (Math.random() * 20 - 10));
         }
 
-        const ansRes = await axios.post(`${origin}/api/answer`, { challenge_id: cid, x, y }, {
+        const ansRes = await fetch(`${origin}/api/answer`, {
+            method: 'POST',
             headers: {
                 'User-Agent': DEFAULT_UA,
                 'Origin': 'https://auth.platorelay.com',
@@ -340,10 +341,12 @@ async function oneShotCaptcha(origin) {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json'
             },
-            timeout: 8000
+            body: JSON.stringify({ challenge_id: cid, x, y }),
+            signal: AbortSignal.timeout(8000)
         });
 
-        const ansJson = ansRes.data;
+        if (!ansRes.ok) return null;
+        const ansJson = await ansRes.json().catch(() => null);
         if (ansJson && ansJson.success && ansJson.token) {
             return String(ansJson.token);
         }
@@ -499,7 +502,7 @@ async function resolveLootlabs(url, timeoutMs = 60000) {
         timeout: 15000
     });
 
-    const res1 = await safeGet(url).catch(() => null);
+    const res1 = await sessionAxios.get(url).catch(e => e.response || null);
     if (!res1 || !res1.data) {
         throw new StageError("lootlink", `Failed to fetch Lootlabs page: ${url}`);
     }
@@ -605,7 +608,7 @@ async function resolveLootlabs(url, timeoutMs = 60000) {
 
     for (const t of tasksData) {
         if (t.urid && t.task_id) {
-            axios.get(`${baseTask}/st?uid=${encodeURIComponent(t.urid)}&cat=${encodeURIComponent(t.task_id)}`, {
+            fetch(`${baseTask}/st?uid=${encodeURIComponent(t.urid)}&cat=${encodeURIComponent(t.task_id)}`, {
                 headers: { 'User-Agent': DEFAULT_UA, 'Referer': url }
             }).catch(() => {});
         }
@@ -659,7 +662,7 @@ async function resolveLootlabs(url, timeoutMs = 60000) {
             if (t.urid) {
                 setTimeout(() => {
                     if (isDone) return;
-                    axios.get(`${baseTask}/p?uid=${encodeURIComponent(t.urid)}`, {
+                    fetch(`${baseTask}/p?uid=${encodeURIComponent(t.urid)}`, {
                         headers: { 'User-Agent': DEFAULT_UA, 'Referer': url }
                     }).catch(() => {});
                 }, Math.max(1000, (t.auto_complete_seconds || 5) * 1000));
@@ -696,7 +699,12 @@ async function bypassAdlocker(url, timeoutMs = 60000) {
     // HTTP redirect follow
     let current = url;
     for (let hop = 0; hop < 6; hop++) {
-        const res = await safeGet(current).catch(() => null);
+        const res = await axios.get(current, {
+            headers: { 'User-Agent': DEFAULT_UA },
+            maxRedirects: 5,
+            timeout: 10000,
+            validateStatus: () => true
+        }).catch(() => null);
 
         if (!res) break;
         const finalUrl = res.request?.res?.responseUrl || current;
@@ -745,7 +753,7 @@ class PlatoRelayClient {
                 'X-Client-Version': CLIENT_VERSION,
                 'User-Agent': DEFAULT_UA,
                 'Origin': this.origin,
-                'Referer': `${this.origin}/a?d=${ticket}`
+                'Referer': `${this.origin}/a?d=${ticket.slice(0, 80)}`
             },
             timeout: 20000
         });
@@ -800,6 +808,20 @@ class PlatoRelayClient {
         const needsCaptcha = msg.includes('captcha');
         const alreadyExists = msg.includes('already exists');
 
+        if (needsCaptcha) {
+            console.log(`[PlatoRelay] Debug: Captcha requested by server. Attempting quick programmatic bypass...`);
+            // Attempt to solve it immediately with a quick shape solver
+            try {
+                const quickToken = await solveShapeCaptcha(CAPTCHA_ORIGIN_DEFAULT, 3, 5);
+                if (quickToken) {
+                    console.log(`[PlatoRelay] Quick captcha token obtained, retrying step...`);
+                    return this.step(service, quickToken, hashToken);
+                }
+            } catch (e) {
+                console.log(`[PlatoRelay] Quick captcha bypass failed: ${e.message}`);
+            }
+        }
+
         if (data.success) {
             const inner = data.data || data;
             let stepUrl = null;
@@ -842,10 +864,14 @@ async function fetchKey(urlOrTicket) {
             for (let attempt = 0; attempt < 6; attempt++) {
                 stepRes = await client.step(service, captchaToken);
                 if (stepRes.needsCaptcha) {
+                    console.log(`[PlatoRelay] Captcha requested, solving...`);
                     captchaToken = await solveShapeCaptcha(CAPTCHA_ORIGIN_DEFAULT);
                     continue;
                 }
-                if (stepRes.ok || stepRes.alreadyExists) break;
+                if (stepRes.ok || stepRes.alreadyExists) {
+                    console.log(`[PlatoRelay] Step successful, proceeding to: ${stepRes.url?.slice(0, 50)}...`);
+                    break;
+                }
 
                 const msg = String(stepRes.message || '').toLowerCase();
                 if (msg.includes('rate limit') || msg.includes('slow down') || msg.includes('too fast')) {
@@ -855,12 +881,12 @@ async function fetchKey(urlOrTicket) {
                 break;
             }
 
-            const checkSt = await client.status();
-            if (checkSt.key && checkSt.key !== "KEY_NOT_FOUND") {
-                return { key: checkSt.key, error: null };
-            }
-
+            // Only check status if step failed or we want to double check before redirecting
             if (!stepRes || !stepRes.ok) {
+                const checkSt = await client.status();
+                if (checkSt.key && checkSt.key !== "KEY_NOT_FOUND") {
+                    return { key: checkSt.key, error: null };
+                }
                 if (stepRes && stepRes.message) {
                     throw new StageError("auth", stepRes.message);
                 }
@@ -935,22 +961,5 @@ module.exports = {
     bypassAdlocker,
     resolveLootlabs,
     extractTicket,
-    extractEmbeddedReturnUrl,
     StageError
 };
-
-
-function safeGet(url, options = {}) {
-    return new Promise((resolve, reject) => {
-        cloudscraper.get({
-            uri: url,
-            headers: {
-                'User-Agent': DEFAULT_UA,
-                ...(options.headers || {})
-            }
-        }, (error, response, body) => {
-            if (error) return reject(error);
-            resolve({ data: body, status: response ? response.statusCode : 200 });
-        });
-    });
-}

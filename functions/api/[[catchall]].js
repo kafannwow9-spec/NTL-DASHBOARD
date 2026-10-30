@@ -1,5 +1,5 @@
 export async function onRequest(context) {
-  const { request, params, env } = context;
+  const { request, params } = context;
   
   // 1. Handle CORS preflight requests
   if (request.method === "OPTIONS") {
@@ -17,7 +17,7 @@ export async function onRequest(context) {
   const pathString = pathArray.join('/');
   
   // 3. Construct the target backend URL exactly like the curl command
-  const targetUrl = `http://fi12.bot-hosting.cloud:25405/api/${pathString}`;
+  const targetUrl = `http://us-lax02.altare.global:25147/api/${pathString}`;
   const url = new URL(request.url);
   const fetchUrl = targetUrl + url.search;
 
@@ -28,10 +28,9 @@ export async function onRequest(context) {
   headers.delete('referer');
 
   // Inject authentication secrets for the bot backend API
-  if (!env.NTL_BOT_SECRET) return Response.json({ error: 'NTL_BOT_SECRET is not configured' }, { status: 503 });
-  headers.set('X-Bot-Secret', env.NTL_BOT_SECRET);
-  headers.set('X-NTL-Secret', env.NTL_BOT_SECRET);
-  headers.set('Authorization', `Bearer ${env.NTL_BOT_SECRET}`);
+  headers.set('X-Bot-Secret', '38dj38nr89oq');
+  headers.set('X-NTL-Secret', '38dj38nr89oq');
+  headers.set('Authorization', 'Bearer 38dj38nr89oq');
 
   const fetchOptions = {
     method: request.method,

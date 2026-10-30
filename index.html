@@ -2453,7 +2453,7 @@ main,section { scroll-margin-top:84px; }
     }
 
     function getApiSecret() {
-      return localStorage.getItem('ntl_api_secret') || '';
+      return localStorage.getItem('ntl_api_secret') || '38dj38nr89oq';
     }
 
     function getApiHeaders(extraHeaders = {}) {
@@ -2824,6 +2824,10 @@ main,section { scroll-margin-top:84px; }
       if (spinner) spinner.classList.remove('hidden');
 
       selectedGuild = { id: guildId, name: name, icon: icon };
+      // Open the management interface from the second dashboard while preserving
+      // this first dashboard's login and server-selection experience.
+      window.location.href = `/manage.html?guildId=${encodeURIComponent(guildId)}`;
+      return;
 
       const drawerNameEl = document.getElementById('drawer-selected-server-name');
       if (drawerNameEl) drawerNameEl.innerText = name;

@@ -188,7 +188,7 @@ const DEFAULT_TRACKS: SimulatedTrack[] = [
 
 export default function App() {
   // Navigation Active Tab
-  const [activeTab, setActiveTab] = useState<"overview" | "tickets" | "moderation" | "sticky_panels" | "protection" | "suggestions" | "delta" | "azkar" | "music" | "broadcast" | "logs" | "privacy" | "server_settings">("overview");
+  const [activeTab, setActiveTab] = useState<"stats" | "tickets" | "moderation" | "sticky_panels" | "protection" | "suggestions" | "delta" | "azkar" | "music" | "broadcast" | "logs" | "privacy">("stats");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Guild Selection State
@@ -202,8 +202,8 @@ export default function App() {
   const [roles, setRoles] = useState<GuildRole[]>([]);
   const [members, setMembers] = useState<{ id: string; name: string; displayName?: string; avatar?: string }[]>([]);
   const [serverEmojis, setServerEmojis] = useState<{ id: string; name: string; url?: string; animated?: boolean }[]>([]);
-  const [guildStats, setGuildStats] = useState({ memberCount: 14, channelsCount: 5, categoriesCount: 3, rolesCount: 4 });
-  const [hasBot, setHasBot] = useState(true);
+  const [guildStats, setGuildStats] = useState({ memberCount: 0, channelsCount: 0, categoriesCount: 0, rolesCount: 0 });
+  const [hasBot, setHasBot] = useState(false);
 
   // Moderation Settings State
   const [moderationSettings, setModerationSettings] = useState<ModerationSettings>(defaultModerationSettings);
@@ -397,19 +397,17 @@ export default function App() {
     setIsLoadingGuilds(true);
     addConsoleLog("CLIENT", "info", "🌐 جلب قائمة السيرفرات", "جاري إرسال طلب GET إلى /api/guilds...");
     fetch("/api/guilds")
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
       .then((data) => {
-        if (data.success && data.guilds && data.guilds.length > 0) {
-          setGuilds(data.guilds);
-          setSelectedGuildId(data.guilds[0].id);
-          addConsoleLog("SUPABASE", "success", "✅ استجابة السيرفرات من Supabase", `تم تحميل ${data.guilds.length} سيرفر بنجاح من Supabase.`, data.guilds);
-        } else {
-          // Fallback demo guild
-          const defaultGuilds = [{ id: "123456789", name: "سيرفر NTL الرسمي", icon: "", hasBot: true }];
-          setGuilds(defaultGuilds);
-          setSelectedGuildId(defaultGuilds[0].id);
-          addConsoleLog("CLIENT", "warn", "⚠️ تنبيه السيرفرات", "تم استخدام السيرفر الافتراضي.");
-        }
+        const liveGuilds = Array.isArray(data.guilds) ? data.guilds.filter((g: any) => g && g.id) : [];
+        setGuilds(liveGuilds);
+        const requestedGuildId = new URLSearchParams(window.location.search).get("guildId");
+        const initialGuild = liveGuilds.find((g: any) => g.id === requestedGuildId) || liveGuilds[0];
+        if (initialGuild) setSelectedGuildId(initialGuild.id);
+        addConsoleLog("API_SERVER", liveGuilds.length ? "success" : "warn", liveGuilds.length ? "تم تحميل السيرفرات الحقيقية" : "لا توجد سيرفرات متاحة", `عدد السيرفرات: ${liveGuilds.length}`, liveGuilds);
       })
       .catch((err) => {
         console.error("Error fetching guilds:", err);
@@ -428,15 +426,12 @@ export default function App() {
 
     fetch(`/api/guild-settings/${selectedGuildId}`, {
       headers: {
-        "X-NTL-Secret": "",
-        "X-Bot-Secret": ""
+        "X-NTL-Secret": "38dj38nr89oq",
+        "X-Bot-Secret": "38dj38nr89oq"
       },
       signal: controller.signal
     })
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}: تعذر جلب إعدادات السيرفر`);
-        return res.json();
-      })
+      .then((res) => res.json())
       .then((data) => {
         clearTimeout(timeoutId);
         if (data.success) {
@@ -496,13 +491,13 @@ export default function App() {
               name: pObj.name || `بانل ${pId}`,
               channelId: pObj.channelId || defaultChannelId,
               categoryId: pObj.categoryId || defaultCategoryId,
-              supportRoleId: pObj.supportRoleId || pObj.staffRoleId || pObj.roleId || defaultRoleId,
+              supportRoleId: pObj.supportRoleId || defaultRoleId,
               title: pObj.title || "🎫 قسم الدعم الفني",
-              description: pObj.description || pObj.desc || "اضغط على الزر لفتح تكت جديد.",
+              description: pObj.description || "اضغط على الزر لفتح تكت جديد.",
               color: pObj.color || "#5865f2",
-              buttonText: pObj.buttonText || pObj.buttonLabel || pObj.buttons?.[0]?.name || "فتح تكت",
-              buttonEmoji: pObj.buttonEmoji || pObj.buttons?.[0]?.emoji || "📩",
-              buttonStyle: pObj.buttonStyle || pObj.buttons?.[0]?.style || "Primary"
+              buttonText: pObj.buttonText || "فتح تكت",
+              buttonEmoji: pObj.buttonEmoji || "📩",
+              buttonStyle: pObj.buttonStyle || "Primary"
             }));
             setTicketPanels(panelsArray);
           } else {
@@ -598,7 +593,6 @@ export default function App() {
         }
       })
       .catch((err) => {
-        clearTimeout(timeoutId);
         console.error("Error fetching guild settings:", err);
         addConsoleLog("API_SERVER", "error", "❌ خطأ في استجابة إعدادات السيرفر", err.message);
       });
@@ -788,7 +782,7 @@ export default function App() {
   };
 
   return (
-    <div className="ntl-dashboard flex h-screen w-full bg-[#1e1f22] text-[#dbdee1] font-sans overflow-hidden dir-rtl" dir="rtl">
+    <div className="flex h-screen w-full bg-[#1e1f22] text-[#dbdee1] font-sans overflow-hidden dir-rtl" dir="rtl">
       
       {/* Toast Notification Container */}
       {toastMessage && (
@@ -803,10 +797,10 @@ export default function App() {
       )}
 
       {/* 1. Primary Left Sidebar - Servers List */}
-      <div className="ntl-server-rail w-[72px] bg-[#1e1f22] flex flex-col items-center py-4 gap-3 border-l border-black/30 shrink-0 hidden sm:flex">
+      <div className="w-[72px] bg-[#1e1f22] flex flex-col items-center py-4 gap-3 border-l border-black/30 shrink-0 hidden sm:flex">
         {/* NTL Logo / Icon */}
-        <div className="ntl-brand-mark w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg hover:scale-105 transition-transform cursor-pointer">
-          <img src="/ntl-logo.png" alt="NTL" className="w-full h-full object-contain" />
+        <div className="w-12 h-12 bg-gradient-to-tr from-indigo-600 to-violet-500 rounded-2xl flex items-center justify-center text-white text-lg font-black shadow-lg hover:scale-105 transition-transform cursor-pointer">
+          NTL
         </div>
 
         <div className="w-8 h-[2px] bg-[#35363c] rounded-full mx-auto my-1"></div>
@@ -840,31 +834,46 @@ export default function App() {
         </div>
       </div>
 
-      {/* Click outside the menu to close it */}
-      {mobileMenuOpen && <button aria-label="إغلاق القائمة" onClick={() => setMobileMenuOpen(false)} className="fixed inset-0 bg-black/65 backdrop-blur-[2px] z-40 cursor-default" />}
-
-      {/* Navigation menu: shown only when the three-line button is pressed */}
-      <div className={`ntl-sidebar w-[min(88vw,320px)] bg-[#202127] backdrop-blur-xl flex flex-col shrink-0 border-l border-black/20 text-right ${mobileMenuOpen ? "fixed inset-y-0 right-0 z-50 shadow-2xl" : "hidden"}`}>
+      {/* 2. Secondary Navigation Sidebar (Dedicated Buttons Replacement for "Overview") */}
+      <div className={`w-64 bg-[#2b2d31] flex flex-col shrink-0 border-l border-black/20 text-right ${mobileMenuOpen ? "fixed inset-y-0 right-0 z-40" : "hidden md:flex"}`}>
         
         {/* Guild Header Switcher */}
-        <div className="h-16 border-b border-white/10 flex items-center justify-between px-4 font-bold text-white shadow-sm shrink-0 bg-[#202127]">
-          <div className="text-right">
-            <div className="text-sm font-extrabold">أقسام التحكم</div>
-            <div className="text-[11px] text-slate-400 font-normal mt-1">اختر القسم الذي تريد إدارته</div>
-          </div>
-          <button onClick={() => setMobileMenuOpen(false)} aria-label="إغلاق القائمة" className="p-2 rounded-xl hover:bg-white/10 text-slate-300"><X className="w-5 h-5" /></button>
-        </div>
-        <div className="px-4 py-3 border-b border-white/5 bg-black/10">
+        <div className="h-14 border-b border-black/20 flex items-center justify-between px-4 font-bold text-white shadow-sm shrink-0 bg-[#2b2d31]">
           <div className="flex items-center gap-2 min-w-0">
-            <Server className="w-4 h-4 text-indigo-400 shrink-0" />
-            <span className="truncate text-xs font-bold text-slate-100">
+            <Server className="w-5 h-5 text-indigo-400 shrink-0" />
+            <span className="truncate text-sm font-bold text-slate-100">
               {guilds.find((g) => g.id === selectedGuildId)?.name || "اختر السيرفر"}
             </span>
           </div>
+          <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-mono border border-emerald-500/30">
+            نشط
+          </span>
         </div>
+
         {/* Navigation Modules Items */}
         <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
-          <div className="text-[10px] uppercase font-bold text-[#949ba4] px-3 mb-2 tracking-wider">أقسام الموقع</div>
+          <div className="text-[10px] uppercase font-bold text-[#949ba4] px-3 mb-2 tracking-wider">
+            قائمة وحدات التحكم والأنظمة
+          </div>
+
+          {/* Server Statistics & Overview Navigation Button */}
+          <button
+            onClick={() => { setActiveTab("stats"); setMobileMenuOpen(false); }}
+            className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-between cursor-pointer ${
+              activeTab === "stats" 
+                ? "bg-[#5865f2] text-white shadow-md scale-[1.02]" 
+                : "text-slate-300 hover:bg-[#35373c] hover:text-white"
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <Activity className="w-4 h-4 text-indigo-300" />
+              <span>إحصائيات ونظرة عامة</span>
+            </div>
+            <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded-full font-mono">
+              رئيسي
+            </span>
+          </button>
+
           {/* Ticket Panels Navigation Button */}
           <button
             onClick={() => { setActiveTab("tickets"); setMobileMenuOpen(false); }}
@@ -1018,21 +1027,6 @@ export default function App() {
             </div>
           </button>
 
-          {/* Server Settings Navigation Button */}
-          <button
-            onClick={() => { setActiveTab("server_settings"); setMobileMenuOpen(false); }}
-            className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-between cursor-pointer ${
-              activeTab === "server_settings"
-                ? "bg-[#5865f2] text-white shadow-md scale-[1.02]"
-                : "text-slate-300 hover:bg-[#35373c] hover:text-white"
-            }`}
-          >
-            <div className="flex items-center gap-2.5">
-              <Settings className="w-4 h-4 text-cyan-300" />
-              <span>إعدادات السيرفر</span>
-            </div>
-          </button>
-
           {/* Privacy & Terms Navigation Button */}
           <button
             onClick={() => { setActiveTab("privacy"); setMobileMenuOpen(false); }}
@@ -1069,19 +1063,19 @@ export default function App() {
       </div>
 
       {/* 3. Main Workspace / Content Display Area */}
-      <div className="ntl-workspace flex-1 bg-[#313338] flex flex-col min-w-0 overflow-hidden">
+      <div className="flex-1 bg-[#313338] flex flex-col min-w-0 overflow-hidden">
         
         {/* Top Header Bar */}
-        <div className="ntl-topbar h-14 border-b border-black/20 flex items-center justify-between px-4 md:px-6 shrink-0 bg-[#313338]">
+        <div className="h-14 border-b border-black/20 flex items-center justify-between px-4 md:px-6 shrink-0 bg-[#313338]">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="text-gray-300 hover:text-white p-1 rounded-lg hover:bg-white/10"
+              className="md:hidden text-gray-300 hover:text-white p-1"
             >
               <Menu className="w-6 h-6" />
             </button>
             <h2 className="text-base md:text-lg font-bold text-white flex items-center gap-2">
-              {activeTab === "overview" && <><Activity className="w-5 h-5 text-indigo-400" /><span>نظرة عامة على السيرفر</span></>}
+              {activeTab === "stats" && <><Activity className="w-5 h-5 text-indigo-400" /><span>إحصائيات ونظرة عامة على السيرفر</span></>}
               {activeTab === "tickets" && <><Ticket className="w-5 h-5 text-indigo-400" /><span>إدارة بانلات التكتات</span></>}
               {activeTab === "moderation" && <><ShieldAlert className="w-5 h-5 text-amber-400" /><span>نظام الإشراف الشامل وإدارة الأوامر (Moderation)</span></>}
               {activeTab === "sticky_panels" && <><Layers className="w-5 h-5 text-pink-400" /><span>بانلات الرسائل التلقائية والمتجددة (Sticky Auto Panels)</span></>}
@@ -1092,7 +1086,6 @@ export default function App() {
               {activeTab === "broadcast" && <><Send className="w-5 h-5 text-blue-400" /><span>إرسال إعلان مباشر لرومات السيرفر</span></>}
               {activeTab === "logs" && <><FileText className="w-5 h-5 text-rose-400" /><span>سجلات البوت والنشاط اللحظي</span></>}
               {activeTab === "privacy" && <><Lock className="w-5 h-5 text-emerald-400" /><span>سياسة الخصوصية وشروط الاستخدام (Privacy & Terms)</span></>}
-              {activeTab === "server_settings" && <><Settings className="w-5 h-5 text-cyan-300" /><span>إعدادات السيرفر</span></>}
             </h2>
           </div>
 
@@ -1124,81 +1117,140 @@ export default function App() {
         </div>
 
         {/* Scrollable View Area */}
-        <div className="ntl-content flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
-          {activeTab === "overview" && (
-            <div className="max-w-6xl mx-auto space-y-6">
-              <section className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-[#25283b] via-[#22242e] to-[#1b1c22] p-5 md:p-8">
-                <div className="absolute -left-12 -top-16 w-56 h-56 rounded-full bg-indigo-500/10 blur-3xl pointer-events-none" />
-                <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-5">
-                  <div className="min-w-0">
-                    <div className="inline-flex items-center gap-2 rounded-full border border-indigo-300/20 bg-indigo-400/10 px-3 py-1 text-xs text-indigo-200 mb-4">
-                      <Activity className="w-3.5 h-3.5" /> لوحة ملخص السيرفر
-                    </div>
-                    <h1 className="text-2xl md:text-3xl font-black text-white leading-tight">
-                      {guilds.find((g) => g.id === selectedGuildId)?.name || "أهلاً بك في لوحة التحكم"}
-                    </h1>
-                    <p className="text-sm text-slate-400 mt-3 max-w-xl leading-7">من هنا تقدر تراجع إحصائيات السيرفر بسرعة. إعدادات البوت وأقسام التحكم موجودة في قائمة الثلاث شرطات بالأعلى، ولن تظهر إلا عند فتحها.</p>
-                    <div className="flex flex-wrap gap-2 mt-5">
-                      <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold border ${hasBot ? "bg-emerald-500/10 border-emerald-400/20 text-emerald-300" : "bg-amber-500/10 border-amber-400/20 text-amber-300"}`}>
-                        <span className={`w-2 h-2 rounded-full ${hasBot ? "bg-emerald-400" : "bg-amber-400"}`} />
-                        {hasBot ? "البوت موجود في السيرفر" : "البوت غير موجود في السيرفر"}
-                      </span>
-                      <span className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold bg-white/5 border border-white/10 text-slate-300"><Server className="w-3.5 h-3.5" /> {guilds.length} سيرفر متاح</span>
-                    </div>
-                  </div>
-                  <button onClick={() => setMobileMenuOpen(true)} className="shrink-0 inline-flex items-center justify-center gap-2 rounded-2xl bg-indigo-500 hover:bg-indigo-400 px-5 py-3 text-sm font-extrabold text-white shadow-lg shadow-indigo-950/30 transition">
-                    <Menu className="w-5 h-5" /> فتح أقسام التحكم
-                  </button>
-                </div>
-              </section>
-
-              <section>
-                <div className="flex items-end justify-between gap-3 mb-3">
-                  <div><h2 className="text-lg font-extrabold text-white">إحصائيات السيرفر</h2><p className="text-xs text-slate-400 mt-1">ملخص سريع قبل الدخول إلى الإعدادات</p></div>
-                  <span className="text-[11px] text-slate-500">تتغير حسب السيرفر المحدد</span>
-                </div>
-                <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-                  {[
-                    { label: "الأعضاء", value: guildStats.memberCount, icon: Users, color: "text-sky-300", bg: "bg-sky-400/10", hint: "عدد أعضاء السيرفر" },
-                    { label: "القنوات", value: guildStats.channelsCount, icon: Layers, color: "text-violet-300", bg: "bg-violet-400/10", hint: "القنوات النصية والصوتية" },
-                    { label: "التصنيفات", value: guildStats.categoriesCount, icon: Database, color: "text-amber-300", bg: "bg-amber-400/10", hint: "تصنيفات القنوات" },
-                    { label: "الرتب", value: guildStats.rolesCount, icon: Shield, color: "text-emerald-300", bg: "bg-emerald-400/10", hint: "رتب السيرفر" }
-                  ].map((stat) => {
-                    const Icon = stat.icon;
-                    return <div key={stat.label} className="rounded-2xl border border-white/10 bg-[#25262d] p-4 md:p-5 hover:border-white/20 transition-colors">
-                      <div className="flex items-center justify-between gap-2"><div className={`w-10 h-10 rounded-xl ${stat.bg} ${stat.color} flex items-center justify-center`}><Icon className="w-5 h-5" /></div><span className="text-2xl md:text-3xl font-black text-white tabular-nums">{stat.value}</span></div>
-                      <h3 className="text-sm font-bold text-slate-200 mt-4">{stat.label}</h3><p className="text-[11px] text-slate-500 mt-1">{stat.hint}</p>
-                    </div>;
-                  })}
-                </div>
-              </section>
-
-              <section className="rounded-2xl border border-white/10 bg-[#25262d] p-5">
-                <h2 className="text-base font-extrabold text-white mb-1">كيف تستخدم اللوحة؟</h2>
-                <p className="text-xs text-slate-400 mb-4">خلّينا نخليها بسيطة: اختَر القسم الذي تحتاجه فقط.</p>
-                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {[
-                    { title: "إدارة البانلات", desc: "إنشاء رسائل التكتات والرسائل الثابتة", tab: "tickets" as const, icon: Ticket },
-                    { title: "حماية السيرفر", desc: "التحكم في أنظمة الحماية ومكافحة التخريب", tab: "protection" as const, icon: Shield },
-                    { title: "الإشراف", desc: "أوامر الإشراف وإعدادات الموديريشن", tab: "moderation" as const, icon: ShieldAlert },
-                    { title: "الاقتراحات", desc: "إعداد صندوق اقتراحات الأعضاء", tab: "suggestions" as const, icon: Lightbulb },
-                    { title: "الموسيقى", desc: "إعدادات تشغيل الموسيقى", tab: "music" as const, icon: Music },
-                    { title: "إعدادات السيرفر", desc: "الخيارات العامة للسيرفر", tab: "server_settings" as const, icon: Settings }
-                  ].map((item) => {
-                    const Icon = item.icon;
-                    return <button key={item.tab} onClick={() => setActiveTab(item.tab)} className="flex items-center gap-3 text-right rounded-xl border border-white/5 bg-black/10 hover:bg-white/5 hover:border-indigo-400/30 p-3 transition group">
-                      <span className="w-10 h-10 shrink-0 rounded-xl bg-white/5 text-indigo-300 flex items-center justify-center group-hover:bg-indigo-500/15"><Icon className="w-5 h-5" /></span>
-                      <span className="min-w-0"><span className="block text-sm font-bold text-slate-200">{item.title}</span><span className="block text-xs text-slate-500 mt-1">{item.desc}</span></span><ChevronRight className="w-4 h-4 text-slate-600 mr-auto shrink-0" />
-                    </button>;
-                  })}
-                </div>
-              </section>
-            </div>
-          )}
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
 
           {/* ========================================================= */}
           {/* TAB 1: TICKETS (TICKET PANELS - PANEL BY PANEL)          */}
           {/* ========================================================= */}
+          {/* ========================================================= */}
+          {/* TAB 0: SERVER STATISTICS & OVERVIEW                    */}
+          {/* ========================================================= */}
+          {activeTab === "stats" && (
+            <div className="space-y-6 max-w-5xl mx-auto">
+              <div className="bg-gradient-to-r from-indigo-900/40 via-purple-900/40 to-slate-900/40 p-6 md:p-8 rounded-3xl border border-white/10 shadow-2xl relative overflow-hidden">
+                <div className="absolute -right-10 -bottom-10 w-60 h-60 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
+                <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
+                  <div className="flex items-center gap-4">
+                    <div className="w-20 h-20 rounded-2xl bg-[#2b2d31] border border-white/10 flex items-center justify-center shadow-xl overflow-hidden shrink-0">
+                      {guilds.find(g => g.id === selectedGuildId)?.icon ? (
+                        <img src={guilds.find(g => g.id === selectedGuildId)?.icon} alt="Server Icon" className="w-full h-full object-cover" />
+                      ) : (
+                        <Server className="w-10 h-10 text-indigo-400" />
+                      )}
+                    </div>
+                    <div>
+                      <h2 className="text-xl md:text-2xl font-black text-white">
+                        {guilds.find(g => g.id === selectedGuildId)?.name || "اختر السيرفر لإدارة إحصائياته"}
+                      </h2>
+                      <p className="text-xs text-slate-400 mt-1">
+                        لوحة تحكم البوت المتقدمة - نظام Novax SaaS المتطور
+                      </p>
+                      <div className="flex items-center gap-2 mt-3">
+                        <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2.5 py-1 rounded-full font-mono border border-emerald-500/30">
+                          ● البوت متصل ويعمل بكفاءة
+                        </span>
+                        <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-2.5 py-1 rounded-full font-mono border border-indigo-500/30">
+                          ID: {selectedGuildId || "N/A"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setMobileMenuOpen(true)}
+                      className="px-5 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl text-xs font-bold transition-all shadow-lg flex items-center gap-2 cursor-pointer"
+                    >
+                      <Menu className="w-4 h-4" />
+                      <span>فتح قائمة التحكم والأنظمة</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Stats Grid Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-[#2b2d31] p-5 rounded-2xl border border-white/5 shadow-lg space-y-2">
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span className="text-xs font-bold">إجمالي الأعضاء</span>
+                    <Users className="w-5 h-5 text-indigo-400" />
+                  </div>
+                  <div className="text-2xl font-black text-white font-mono">{guildStats.memberCount}</div>
+                  <p className="text-[10px] text-emerald-400">نشط في السيرفر حالياً</p>
+                </div>
+
+                <div className="bg-[#2b2d31] p-5 rounded-2xl border border-white/5 shadow-lg space-y-2">
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span className="text-xs font-bold">القنوات والنقاط</span>
+                    <Server className="w-5 h-5 text-pink-400" />
+                  </div>
+                  <div className="text-2xl font-black text-white font-mono">{guildStats.channelsCount}</div>
+                  <p className="text-[10px] text-slate-400">روم نصي وصوتي</p>
+                </div>
+
+                <div className="bg-[#2b2d31] p-5 rounded-2xl border border-white/5 shadow-lg space-y-2">
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span className="text-xs font-bold">الفئات (Categories)</span>
+                    <Layers className="w-5 h-5 text-amber-400" />
+                  </div>
+                  <div className="text-2xl font-black text-white font-mono">{guildStats.categoriesCount}</div>
+                  <p className="text-[10px] text-slate-400">فئات منظمة</p>
+                </div>
+
+                <div className="bg-[#2b2d31] p-5 rounded-2xl border border-white/5 shadow-lg space-y-2">
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span className="text-xs font-bold">الرتب الصلاحيات</span>
+                    <Shield className="w-5 h-5 text-emerald-400" />
+                  </div>
+                  <div className="text-2xl font-black text-white font-mono">{guildStats.rolesCount}</div>
+                  <p className="text-[10px] text-emerald-400">رتب إدارية</p>
+                </div>
+              </div>
+
+              {/* Quick Actions & Modules Overview */}
+              <div className="bg-[#2b2d31] p-6 rounded-2xl border border-white/5 shadow-xl space-y-4">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-amber-400" />
+                  <span>الوحدات والأنظمة المفعلة في السيرفر</span>
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div onClick={() => setActiveTab("tickets")} className="bg-[#35373c] hover:bg-[#404249] p-4 rounded-xl border border-white/5 transition cursor-pointer flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Ticket className="w-5 h-5 text-indigo-400" />
+                      <div>
+                        <div className="text-xs font-bold text-white">إدارة التكتات</div>
+                        <div className="text-[10px] text-slate-400">{ticketPanels.length} بانل نشط</div>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-slate-400" />
+                  </div>
+
+                  <div onClick={() => setActiveTab("protection")} className="bg-[#35373c] hover:bg-[#404249] p-4 rounded-xl border border-white/5 transition cursor-pointer flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Shield className="w-5 h-5 text-emerald-400" />
+                      <div>
+                        <div className="text-xs font-bold text-white">نظام الحماية</div>
+                        <div className="text-[10px] text-emerald-400">حماية شاملة مفعلة</div>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-slate-400" />
+                  </div>
+
+                  <div onClick={() => setActiveTab("moderation")} className="bg-[#35373c] hover:bg-[#404249] p-4 rounded-xl border border-white/5 transition cursor-pointer flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <ShieldAlert className="w-5 h-5 text-amber-400" />
+                      <div>
+                        <div className="text-xs font-bold text-white">أوامر الإشراف</div>
+                        <div className="text-[10px] text-amber-400">9 أوامر سلاش مفعلة</div>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-slate-400" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {activeTab === "tickets" && (
             <div className="space-y-6 max-w-5xl mx-auto">
               
@@ -2583,43 +2635,6 @@ export default function App() {
                 </div>
               )}
 
-            </div>
-          )}
-
-          {/* ========================================================= */}
-          {/* SERVER SETTINGS TAB                                      */}
-          {/* ========================================================= */}
-          {activeTab === "server_settings" && (
-            <div className="max-w-4xl mx-auto space-y-6 text-right" dir="rtl">
-              <section className="rounded-2xl border border-white/10 bg-slate-900/60 backdrop-blur-xl p-6 md:p-8 shadow-xl">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="rounded-xl bg-cyan-400/10 p-3"><Settings className="w-6 h-6 text-cyan-300" /></div>
-                  <div>
-                    <h3 className="text-xl font-extrabold text-white">إعدادات السيرفر</h3>
-                    <p className="text-sm text-slate-400">إدارة السيرفر المحدد وحفظ إعداداته من مكان واحد.</p>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                    <p className="text-xs text-slate-400 mb-1">السيرفر المحدد</p>
-                    <p className="font-bold text-white break-words">{guilds.find((g) => g.id === selectedGuildId)?.name || "لم يتم اختيار سيرفر"}</p>
-                    <p className="text-xs text-slate-500 mt-1">ID: {selectedGuildId || "—"}</p>
-                  </div>
-                  <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                    <p className="text-xs text-slate-400 mb-1">حالة البوت</p>
-                    <p className={`font-bold ${hasBot ? "text-emerald-300" : "text-amber-300"}`}>{hasBot ? "البوت متصل بالسيرفر" : "البوت غير موجود بالسيرفر"}</p>
-                    <p className="text-xs text-slate-500 mt-1">{guildStats.memberCount} عضو</p>
-                  </div>
-                </div>
-                <div className="mt-5 flex flex-wrap gap-3">
-                  <button onClick={() => handleSaveAll()} disabled={isSaving} className="rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 px-5 py-2.5 text-sm font-bold text-white flex items-center gap-2">
-                    <Check className="w-4 h-4" /> {isSaving ? "جاري الحفظ..." : "حفظ جميع التعديلات"}
-                  </button>
-                  <button onClick={() => setMobileMenuOpen(true)} className="rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 px-5 py-2.5 text-sm font-bold text-white flex items-center gap-2">
-                    <Menu className="w-4 h-4" /> عرض قائمة الأنظمة
-                  </button>
-                </div>
-              </section>
             </div>
           )}
 
