@@ -1,7 +1,7 @@
 {
   "CLIENT_ID": "1405179057628254259",
   "CLIENT_SECRET": "aje2bpXBO253BpkCkdoXV9MMMono0TkH",
-  "REDIRECT_URI": "https://ais-pre-pkjh7h756niwp27hi73vw4-104809326473.europe-west3.run.app/",
+  "REDIRECT_URI": "https://ntldashboard.pages.dev/auth/callback",
   "SUPABASE_URL": "https://hxufdckcamwizvibevry.supabase.co",
   "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dWZkY2tjYW13aXp2aWJldnJ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzNTg3MDQsImV4cCI6MjA5NDkzNDcwNH0.qGDsPj5RZUB8iWeyw62ALyj1n5faD6LPHQl8DQt1ibA",
   "BOT_TOKEN": "MTQwNTE3OTA1NzYyODI1NDI1OQ.GlhwY9.vEJE3Gw19VuzbtkOeaAIRsUevyvpo9wqkM0GGw",
@@ -14,7 +14,7 @@
   ],
   "BOT_IP_PORT": "free-bots.heavencloud.in:3647",
   "BOT_SERVER_URL": "http://us-lax02.altare.global:25147",
-  "BOT_SECRET": "38dj38nr89oq",
+  "BOT_SECRET": "",
   "guilds": {
     "1179136470750068766": {
       "ticket": true,

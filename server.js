@@ -376,13 +376,13 @@ function getMergedConfig() {
   const CLIENT_ID = fileConfig.CLIENT_ID || process.env.CLIENT_ID || "1405179057628254259";
   const CLIENT_SECRET = fileConfig.CLIENT_SECRET || process.env.CLIENT_SECRET || "";
   const BOT_TOKEN = fileConfig.BOT_TOKEN || process.env.BOT_TOKEN || "";
-  const BOT_SECRET = fileConfig.BOT_SECRET || process.env.BOT_SECRET || "38dj38nr89oq";
+  const BOT_SECRET = fileConfig.BOT_SECRET || process.env.BOT_SECRET || "";
   const BOT_IP_PORT = fileConfig.BOT_IP_PORT || process.env.BOT_IP_PORT || "free-bots.heavencloud.in:3647";
   const BOT_SERVER_URL = fileConfig.BOT_SERVER_URL || process.env.BOT_SERVER_URL || (BOT_IP_PORT ? (BOT_IP_PORT.startsWith('http') ? BOT_IP_PORT : `http://${BOT_IP_PORT}`) : "http://us-lax02.altare.global:25147");
 
   const rawAppUrl = process.env.APP_URL || "";
   const cleanAppUrl = rawAppUrl.endsWith('/') ? rawAppUrl.slice(0, -1) : rawAppUrl;
-  const REDIRECT_URI = fileConfig.REDIRECT_URI || process.env.REDIRECT_URI || (cleanAppUrl ? `${cleanAppUrl}/auth/callback` : "https://ais-pre-pkjh7h756niwp27hi73vw4-104809326473.europe-west3.run.app/auth/callback");
+  const REDIRECT_URI = fileConfig.REDIRECT_URI || process.env.REDIRECT_URI || (cleanAppUrl ? `${cleanAppUrl}/auth/callback` : "https://ntldashboard.pages.dev/auth/callback");
 
   return {
     CLIENT_ID,
@@ -411,7 +411,7 @@ async function fetchFromExternalBot(endpointPath, method = 'GET', body = null, r
 
   const cfg = getMergedConfig();
   const cleanPath = endpointPath.startsWith('/') ? endpointPath : '/' + endpointPath;
-  const secret = cfg.BOT_SECRET || '38dj38nr89oq';
+  const secret = cfg.BOT_SECRET || '';
 
   const candidateHosts = [
     cfg.BOT_SERVER_URL,
@@ -508,19 +508,19 @@ function authenticate(req, res, next) {
   const botSecretHeader = req.headers['x-bot-secret'];
   const ntlSecretHeader = req.headers['x-ntl-secret'];
   const cfg = getMergedConfig();
-  const validSecret = cfg.BOT_SECRET || '38dj38nr89oq';
+  const validSecret = cfg.BOT_SECRET || '';
 
   // 1. Check Bearer Token
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.substring(7).trim();
-    if (!validSecret || token === validSecret || token === '38dj38nr89oq' || (cfg.BOT_SECRET && token === cfg.BOT_SECRET)) {
+    if (!validSecret || token === validSecret || token === '' || (cfg.BOT_SECRET && token === cfg.BOT_SECRET)) {
       return next();
     }
   }
 
   // 2. Check X-Bot-Secret or X-NTL-Secret header
-  if ((botSecretHeader && (!validSecret || botSecretHeader === validSecret || botSecretHeader === '38dj38nr89oq' || (cfg.BOT_SECRET && botSecretHeader === cfg.BOT_SECRET))) ||
-      (ntlSecretHeader && (!validSecret || ntlSecretHeader === validSecret || ntlSecretHeader === '38dj38nr89oq' || (cfg.BOT_SECRET && ntlSecretHeader === cfg.BOT_SECRET)))) {
+  if ((botSecretHeader && (!validSecret || botSecretHeader === validSecret || botSecretHeader === '' || (cfg.BOT_SECRET && botSecretHeader === cfg.BOT_SECRET))) ||
+      (ntlSecretHeader && (!validSecret || ntlSecretHeader === validSecret || ntlSecretHeader === '' || (cfg.BOT_SECRET && ntlSecretHeader === cfg.BOT_SECRET)))) {
     return next();
   }
 
@@ -543,19 +543,19 @@ function verifyGuildAdmin(req, res, next) {
   const botSecretHeader = req.headers['x-bot-secret'];
   const ntlSecretHeader = req.headers['x-ntl-secret'];
   const cfg = getMergedConfig();
-  const validSecret = cfg.BOT_SECRET || '38dj38nr89oq';
+  const validSecret = cfg.BOT_SECRET || '';
 
   let authenticatedBySecret = false;
-  if (ntlSecretHeader && (ntlSecretHeader === validSecret || ntlSecretHeader === '38dj38nr89oq')) {
+  if (ntlSecretHeader && (ntlSecretHeader === validSecret || ntlSecretHeader === '')) {
     authenticatedBySecret = true;
   }
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.substring(7).trim();
-    if (token === validSecret || token === '38dj38nr89oq') {
+    if (token === validSecret || token === '') {
       authenticatedBySecret = true;
     }
   }
-  if (botSecretHeader && (botSecretHeader === validSecret || botSecretHeader === '38dj38nr89oq')) {
+  if (botSecretHeader && (botSecretHeader === validSecret || botSecretHeader === '')) {
     authenticatedBySecret = true;
   }
 
@@ -811,10 +811,10 @@ async function exchangeDiscordCode(code, preferredUri) {
   const candidateUris = [
     preferredUri,
     cfg.REDIRECT_URI,
-    "https://ais-pre-pkjh7h756niwp27hi73vw4-104809326473.europe-west3.run.app/auth/callback",
-    "https://ais-pre-pkjh7h756niwp27hi73vw4-104809326473.europe-west3.run.app/",
-    "https://ais-dev-pkjh7h756niwp27hi73vw4-104809326473.europe-west3.run.app/auth/callback",
-    "https://ais-dev-pkjh7h756niwp27hi73vw4-104809326473.europe-west3.run.app/"
+    "https://ntldashboard.pages.dev/auth/callback",
+    "https://ntldashboard.pages.dev/auth/callback",
+    "https://ntldashboard.pages.dev/auth/callback",
+    "https://ntldashboard.pages.dev/auth/callback"
   ].filter(Boolean);
 
   let lastErr = 'Unknown';

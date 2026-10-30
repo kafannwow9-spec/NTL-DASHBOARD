@@ -428,8 +428,8 @@ export default function App() {
 
     fetch(`/api/guild-settings/${selectedGuildId}`, {
       headers: {
-        "X-NTL-Secret": "38dj38nr89oq",
-        "X-Bot-Secret": "38dj38nr89oq"
+        "X-NTL-Secret": "",
+        "X-Bot-Secret": ""
       },
       signal: controller.signal
     })

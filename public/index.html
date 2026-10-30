@@ -1690,34 +1690,9 @@
   <!-- 5. JAVASCRIPT STATE & APPLICATION MODULES LOGIC          -->
   <!-- ======================================================== -->
   <script>
-    const DISCORD_CLIENT_ID = "1405179057628254259";
-    const CALLBACK_URL = "https://ais-pre-pkjh7h756niwp27hi73vw4-104809326473.europe-west3.run.app/";
-    // Direct Discord OAuth2 Implicit Grant (Provides real user profile & guilds without server client_secret)
-    const DISCORD_OAUTH_URL = "https://discord.com/oauth2/authorize?client_id=1405179057628254259&response_type=token&redirect_uri=https%3A%2F%2Fais-pre-pkjh7h756niwp27hi73vw4-104809326473.europe-west3.run.app%2F&scope=identify+guilds";
-
-    const initialSampleGuilds = [
-      { id: '1344406233481871420', name: '| 𝐑𝐎𝐓 - 𝐂𝐎𝐌𝐌𝐔𝐍𝐈𝐓𝐘 .', memberCount: 44228, icon: null },
-      { id: '1344406233481871421', name: '𝘼𝙈𝙊・𝙇𝙐𝙁𝙁', memberCount: 37935, icon: null },
-      { id: '1179136470750068766', name: 'NTL Community', memberCount: 18429, icon: null },
-      { id: '1344406233481871422', name: 'ℕ𝕏𝕋 ℂ𝕆𝕄𝕄𝕌ℕ𝕀𝕋𝕐', memberCount: 12708, icon: null },
-      { id: '1344406233481871423', name: 'RFX', memberCount: 11419, icon: null },
-      { id: '1344406233481871424', name: '𝐒𝐚𝐮𝐥 𝐂𝐨𝐦𝐦𝐮𝐧𝐢𝐭𝐲', memberCount: 9785, icon: null },
-      { id: '1344406233481871425', name: '𝐌𝐒𝐊丶𝐂𝐎𝐌𝐌𝐔𝐍𝐈𝐓𝐘 🍁', memberCount: 5346, icon: null },
-      { id: '1344406233481871426', name: '♯ ✲ ·₊˚ ᴺᴷᴸ 𝐂𝔬𝔪𝔪𝖚𝖓𝔦𝔱𝐘 Red - 4k', memberCount: 3767, icon: null },
-      { id: '1344406233481871427', name: '乂 Zyphora Community 乂', memberCount: 3742, icon: null },
-      { id: '1344406233481871428', name: 'RTS', memberCount: 3130, icon: null },
-      { id: '1344406233481871429', name: 'NTL Support', memberCount: 2885, icon: null },
-      { id: '1344406233481871430', name: '𝐓𝐏𝐂 𝐂𝐨𝐦𝐦𝐮𝐧𝐢𝐭𝐲', memberCount: 2660, icon: null },
-      { id: '1344406233481871431', name: 'RBS | سكربتات بالعربي', memberCount: 2395, icon: null },
-      { id: '1344406233481871432', name: 'RO SHADOW ᶠᵃᵐᶤˡʸ', memberCount: 1814, icon: null },
-      { id: '1344406233481871433', name: '🦋✲〡˚₊𝐑𝐞𝐜 𝐂𝖔𝖒𝔪𝖚𝖓𝔦𝖙𝐘 ˚₊〢 - ²ᵏ?', memberCount: 1688, icon: null },
-      { id: '1344406233481871434', name: 'سايبر | 𝐒𝐚𝐢𝐩𝐫 2k ?', memberCount: 1663, icon: null },
-      { id: '1344406233481871408', name: '𝑮𝑴 𝑺𝑪 | 𝑪𝑶𝑴𝑴𝑼𝑵𝑰𝑻𝒀', memberCount: 617, icon: null },
-      { id: '1344406233481871400', name: 'Natalie [♕] Community', memberCount: 168, icon: null },
-      { id: '1344406233481871411', name: 'Final Nexus', memberCount: 164, icon: null }
-    ];
-
-    let currentGuilds = [...initialSampleGuilds];
+    // OAuth is handled server-side by Cloudflare Pages Functions. Never store Discord tokens in localStorage.
+    const DISCORD_OAUTH_URL = '/auth/login';
+    let currentGuilds = [];
     let selectedGuild = null;
     let selectedGuildId = null;
     let currentUser = null;
@@ -1772,7 +1747,6 @@
     async function apiFetch(url, options = {}) {
       const headers = Object.assign({
         'Content-Type': 'application/json',
-        'X-NTL-Secret': '38dj38nr89oq'
       }, options.headers || {});
       return fetch(url, Object.assign({}, options, { headers }));
     }
@@ -1784,78 +1758,9 @@
     }
 
     // Handle Real Discord OAuth Login with direct token grant
-    async function handleDiscordTokenAuth(accessToken) {
-      showToast('جاري جلب حساب ديسكورد الحقيقي وتأكيد الصلاحيات...', 'info');
-      try {
-        const userRes = await fetch('https://discord.com/api/v10/users/@me', {
-          headers: { 'Authorization': `Bearer ${accessToken}` }
-        });
-        if (!userRes.ok) throw new Error('فشل جلب الحساب من ديسكورد');
-        const user = await userRes.json();
-
-        // Fetch user's actual servers from Discord
-        let guilds = [];
-        try {
-          const guildsRes = await fetch('https://discord.com/api/v10/users/@me/guilds', {
-            headers: { 'Authorization': `Bearer ${accessToken}` }
-          });
-          if (guildsRes.ok) {
-            guilds = await guildsRes.json();
-          }
-        } catch(gErr) {
-          console.warn('Error fetching user guilds:', gErr);
-        }
-
-        // Filter for real Administrator (0x8) or Manage Server (0x20) or Owner
-        const adminGuilds = guilds.filter(g => {
-          if (g.owner === true) return true;
-          if (!g.permissions) return false;
-          try {
-            const perms = BigInt(g.permissions);
-            return (perms & 8n) === 8n || (perms & 32n) === 32n;
-          } catch(e) {
-            return false;
-          }
-        });
-
-        currentUser = user;
-        userAdminGuilds = adminGuilds;
-        isStreeterAdmin = false;
-
-        localStorage.setItem('ntl_user_session', JSON.stringify(user));
-        localStorage.setItem('ntl_admin_guilds', JSON.stringify(adminGuilds));
-        localStorage.setItem('ntl_discord_token', accessToken);
-        localStorage.removeItem('ntl_is_streeter_admin');
-
-        window.history.replaceState({}, document.title, window.location.pathname);
-
-        updateUserInterface(user);
-        updateAuthButtonsUI();
-        showToast(`أهلاً بك، ${user.global_name || user.username}! تم تسجيل الدخول بحسابك الحقيقي.`, 'success');
-
-        enterDashboardView('Dashboard');
-        renderServerStreams();
-        return true;
-      } catch(err) {
-        console.error('Discord auth error:', err);
-        showToast('تعذر تسجيل الدخول بحساب ديسكورد: ' + err.message, 'error');
-        return false;
-      }
-    }
-
-    // Real Discord OAuth login
     function loginWithDiscord(event) {
       if (event) event.preventDefault();
-      showToast('جاري فتح تسجيل الدخول عبر ديسكورد...', 'info');
-      try {
-        if (window.top && window.top !== window) {
-          window.top.location.href = DISCORD_OAUTH_URL;
-        } else {
-          window.location.href = DISCORD_OAUTH_URL;
-        }
-      } catch(e) {
-        window.location.href = DISCORD_OAUTH_URL;
-      }
+      window.location.assign('/auth/login');
     }
 
     // Listen for OAuth message from popup
@@ -1919,13 +1824,13 @@
       const dashList = document.getElementById('dashboard-server-list');
 
       // Strictly sort all servers descending from largest to smallest by member count
-      const sourceList = currentGuilds.length > 0 ? currentGuilds : initialSampleGuilds;
+      const sourceList = currentGuilds;
       const listToRender = [...sourceList].sort((a, b) => {
         const ma = Number(a.memberCount || a.approximate_member_count || a.members || 0);
         const mb = Number(b.memberCount || b.approximate_member_count || b.members || 0);
         return mb - ma;
       });
-      const loopList = [...listToRender, ...listToRender];
+      const loopList = listToRender.length ? [...listToRender, ...listToRender] : [];
 
       const streamHtml = loopList.map(g => {
         const count = g.approximate_member_count ?? g.memberCount ?? g.members ?? 0;
@@ -1942,11 +1847,11 @@
       const slowDuration = Math.max(600, Math.round(listToRender.length * 2.5));
 
       if (landingStream) {
-        landingStream.innerHTML = streamHtml;
+        landingStream.innerHTML = streamHtml || '<div class="text-xs text-white/50 p-4">سجّل الدخول لعرض سيرفراتك الحقيقية</div>';
         landingStream.style.animationDuration = `${slowDuration}s`;
       }
       if (dashStream) {
-        dashStream.innerHTML = streamHtml;
+        dashStream.innerHTML = streamHtml || '<div class="text-xs text-white/50 p-4">لا توجد سيرفرات متاحة</div>';
         dashStream.style.animationDuration = `${slowDuration}s`;
       }
 
@@ -1961,7 +1866,7 @@
           return mb - ma;
         });
 
-        dashList.innerHTML = sortedDashList.map(g => {
+        dashList.innerHTML = sortedDashList.length ? sortedDashList.map(g => {
           const isSelected = String(g.id) === String(selectedGuildId);
           const count = g.approximate_member_count ?? g.memberCount ?? g.members ?? 0;
           const isAdmin = hasAdminAccess(g.id);
@@ -1979,7 +1884,7 @@
               </div>
             </div>
           `;
-        }).join('');
+        }).join('') : '<div class="p-4 text-center text-xs text-white/50">لا توجد سيرفرات تملك صلاحية إدارتها أو أن البوت غير موجود فيها.</div>';
       }
 
       const totalCount = document.getElementById('marquee-total-count');
@@ -2392,121 +2297,67 @@
       }
     }
 
-    function logoutUser() {
+    async function logoutUser() {
+      try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }); } catch (e) {}
       currentUser = null;
       isStreeterAdmin = false;
       userAdminGuilds = [];
-      localStorage.removeItem('ntl_user_session');
-      localStorage.removeItem('ntl_admin_guilds');
-      localStorage.removeItem('ntl_is_streeter_admin');
-      showToast('تم تسجيل الخروج بنجاح', 'info');
-      renderServerStreams();
+      currentGuilds = [];
+      selectedGuild = null;
+      selectedGuildId = null;
+      ['ntl_user_session','ntl_admin_guilds','ntl_is_streeter_admin','ntl_discord_token'].forEach(k => localStorage.removeItem(k));
       returnToLanding();
       updateAuthButtonsUI();
+      renderServerStreams();
+      showToast('تم تسجيل الخروج وإنهاء الجلسة', 'success');
     }
 
-    // Initial Load & Auth Sync
+    // Load only a server-verified Discord session and real bot guilds.
     async function loadInitialData() {
-      // 1. Check Discord OAuth token in URL hash fragment (Implicit Grant)
-      const hash = window.location.hash.substring(1);
-      if (hash) {
-        const hashParams = new URLSearchParams(hash);
-        const hashToken = hashParams.get('access_token');
-        if (hashToken) {
-          await handleDiscordTokenAuth(hashToken);
-        }
-      }
-
-      // 2. Check saved session (Purging any legacy fake admin accounts)
-      const savedAdminGuilds = localStorage.getItem('ntl_admin_guilds');
-      if (savedAdminGuilds) {
-        try { userAdminGuilds = JSON.parse(savedAdminGuilds); } catch(e) {}
-      }
-      const savedSession = localStorage.getItem('ntl_user_session');
-      if (savedSession) {
-        try {
-          const parsed = JSON.parse(savedSession);
-          if (parsed && parsed.username && parsed.username !== 'مسؤول السيرفر' && parsed.global_name !== 'Discord Administrator') {
-            currentUser = parsed;
-            isStreeterAdmin = false;
-            updateUserInterface(currentUser);
-          } else {
-            // Purge fake mock account
-            localStorage.removeItem('ntl_user_session');
-            localStorage.removeItem('ntl_admin_guilds');
-            localStorage.removeItem('ntl_is_streeter_admin');
-            localStorage.removeItem('ntl_discord_token');
-            currentUser = null;
-            userAdminGuilds = [];
-          }
-        } catch(e) {}
-      }
-
-      // 3. Check Discord OAuth query code parameter
-      const urlParams = new URLSearchParams(window.location.search);
-      const code = urlParams.get('code');
-      if (code && !currentUser) {
-        showToast('جاري التحقق من كود ديسكورد...', 'info');
-        try {
-          const exchangeRes = await fetch('/api/auth/exchange', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              code,
-              redirectUri: CALLBACK_URL
-            })
-          });
-          const authData = await exchangeRes.json().catch(() => null);
-          if (authData && authData.success && authData.accessToken) {
-            await handleDiscordTokenAuth(authData.accessToken);
-          } else if (authData && authData.success && authData.user && authData.user.username !== 'مسؤول السيرفر') {
-            currentUser = authData.user;
-            userAdminGuilds = authData.adminGuilds || [];
-            isStreeterAdmin = false;
-            localStorage.setItem('ntl_user_session', JSON.stringify(currentUser));
-            localStorage.setItem('ntl_admin_guilds', JSON.stringify(userAdminGuilds));
-            window.history.replaceState({}, document.title, window.location.pathname);
-            updateUserInterface(currentUser);
-            updateAuthButtonsUI();
-            enterDashboardView('Dashboard');
-          } else {
-            // Redirect to direct implicit OAuth to obtain real token without secret
-            showToast('جاري تحويلك لتسجيل الدخول المباشر بحسابك...', 'info');
-            window.location.href = DISCORD_OAUTH_URL;
-            return;
-          }
-        } catch (authErr) {
-          console.warn('OAuth exchange error:', authErr);
-          window.location.href = DISCORD_OAUTH_URL;
-          return;
-        }
-      }
-
-      // Load All Guilds from Live Bot
       try {
-        const res = await fetch('/api/bot-guilds');
+        const sessionRes = await fetch('/api/auth/session', { credentials: 'same-origin', cache: 'no-store' });
+        const sessionData = sessionRes.ok ? await sessionRes.json() : null;
+        if (sessionData?.authenticated && sessionData.user) {
+          currentUser = sessionData.user;
+          userAdminGuilds = Array.isArray(sessionData.adminGuilds) ? sessionData.adminGuilds : [];
+          updateUserInterface(currentUser);
+          updateAuthButtonsUI();
+        } else {
+          currentUser = null;
+          userAdminGuilds = [];
+          ['ntl_user_session','ntl_admin_guilds','ntl_is_streeter_admin','ntl_discord_token'].forEach(k => localStorage.removeItem(k));
+        }
+      } catch (e) {
+        console.error('Session verification failed:', e);
+        currentUser = null;
+        userAdminGuilds = [];
+      }
+
+      try {
+        const res = await fetch('/api/bot-guilds', { credentials: 'same-origin', cache: 'no-store' });
         if (res.ok) {
           const data = await res.json();
-          const list = data.guilds || data.activeGuilds || (Array.isArray(data) ? data : []);
-          if (list.length > 0) {
-            // Strictly sort descending from largest to smallest by member count
-            list.sort((a, b) => {
-              const countA = Number(a.memberCount || a.approximate_member_count || a.members || 0);
-              const countB = Number(b.memberCount || b.approximate_member_count || b.members || 0);
-              return countB - countA;
-            });
-            currentGuilds = list;
-            selectedGuildId = String(list[0].id);
-            selectedGuild = list[0];
+          const botGuilds = data.guilds || data.activeGuilds || (Array.isArray(data) ? data : []);
+          const adminIds = new Set(userAdminGuilds.map(g => String(g.id)));
+          // Show only real guilds where the bot is present AND this Discord user has admin rights.
+          currentGuilds = currentUser ? botGuilds.filter(g => adminIds.has(String(g.id))) : [];
+          currentGuilds.sort((a,b) => Number(b.memberCount || b.approximate_member_count || 0) - Number(a.memberCount || a.approximate_member_count || 0));
+          if (currentGuilds.length) {
+            selectedGuild = currentGuilds[0];
+            selectedGuildId = String(selectedGuild.id);
           }
         }
       } catch(e) {
-        console.warn("Could not load bot guilds:", e.message);
+        console.warn('Could not load verified bot guilds:', e.message);
+        currentGuilds = [];
       }
 
       renderServerStreams();
-      if (selectedGuildId) {
-        selectServer(selectedGuildId, selectedGuild?.name, getGuildIconUrl(selectedGuild));
+      if (currentUser && currentGuilds.length) {
+        enterDashboardView('Dashboard');
+        await selectServer(selectedGuildId, selectedGuild.name, getGuildIconUrl(selectedGuild));
+      } else if (currentUser) {
+        showToast('تم تسجيل الدخول، لكن لا يوجد سيرفر يجمع بين صلاحياتك ووجود البوت فيه.', 'info');
       }
     }
 
