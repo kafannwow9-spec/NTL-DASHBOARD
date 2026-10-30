@@ -1693,9 +1693,9 @@
   <!-- ======================================================== -->
   <script>
     const DISCORD_CLIENT_ID = "1405179057628254259";
-    const CALLBACK_URL = "https://ntldashboard.pages.dev/";
-    // Discord OAuth2 Authorization Code flow; callback must match the registered Discord redirect URI.
-    const DISCORD_OAUTH_URL = "https://discord.com/oauth2/authorize?client_id=1405179057628254259&response_type=code&redirect_uri=https%3A%2F%2Fntldashboard.pages.dev%2F&scope=guilds+identify";
+    const CALLBACK_URL = "https://ais-pre-pkjh7h756niwp27hi73vw4-104809326473.europe-west3.run.app/";
+    // Direct Discord OAuth2 Implicit Grant (Provides real user profile & guilds without server client_secret)
+    const DISCORD_OAUTH_URL = "https://discord.com/oauth2/authorize?client_id=1405179057628254259&response_type=token&redirect_uri=https%3A%2F%2Fais-pre-pkjh7h756niwp27hi73vw4-104809326473.europe-west3.run.app%2F&scope=identify+guilds";
 
     const initialSampleGuilds = [
       { id: '1344406233481871420', name: '| 𝐑𝐎𝐓 - 𝐂𝐎𝐌𝐌𝐔𝐍𝐈𝐓𝐘 .', memberCount: 44228, icon: null },
@@ -2472,16 +2472,15 @@
             updateAuthButtonsUI();
             enterDashboardView('Dashboard');
           } else {
-            // Do not restart OAuth automatically: the current deployment does not
-            // expose POST /api/auth/exchange, and retrying here creates a redirect loop.
-            console.error('OAuth code exchange is unavailable:', exchangeRes.status, authData);
-            showToast('تم الرجوع من Discord، لكن خادم المصادقة لا يوفر مسار تبادل الكود. لم نعد توجيهك تلقائياً لتجنب حلقة تسجيل الدخول.', 'error');
-            window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
+            // Redirect to direct implicit OAuth to obtain real token without secret
+            showToast('جاري تحويلك لتسجيل الدخول المباشر بحسابك...', 'info');
+            window.location.href = DISCORD_OAUTH_URL;
+            return;
           }
         } catch (authErr) {
           console.warn('OAuth exchange error:', authErr);
-          showToast('تعذر إكمال تسجيل الدخول: خادم المصادقة غير متاح. لن نكرر التحويل تلقائياً.', 'error');
-          window.history.replaceState({}, document.title, window.location.pathname);
+          window.location.href = DISCORD_OAUTH_URL;
+          return;
         }
       }
 
