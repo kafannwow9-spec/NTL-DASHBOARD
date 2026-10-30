@@ -486,19 +486,23 @@ export default function App() {
 
           // Panels
           if (st.panels && typeof st.panels === "object" && Object.keys(st.panels).length > 0) {
-            const panelsArray: TicketPanel[] = Object.entries(st.panels).map(([pId, pObj]: [string, any]) => ({
-              id: pId,
-              name: pObj.name || `بانل ${pId}`,
-              channelId: pObj.channelId || defaultChannelId,
-              categoryId: pObj.categoryId || defaultCategoryId,
-              supportRoleId: pObj.supportRoleId || defaultRoleId,
-              title: pObj.title || "🎫 قسم الدعم الفني",
-              description: pObj.description || "اضغط على الزر لفتح تكت جديد.",
-              color: pObj.color || "#5865f2",
-              buttonText: pObj.buttonText || "فتح تكت",
-              buttonEmoji: pObj.buttonEmoji || "📩",
-              buttonStyle: pObj.buttonStyle || "Primary"
-            }));
+            const panelsArray: TicketPanel[] = Object.entries(st.panels).map(([pId, pObj]: [string, any]) => {
+              const firstButton = Array.isArray(pObj.buttons) ? pObj.buttons[0] : null;
+              return {
+                ...pObj,
+                id: pId,
+                name: pObj.name || `بانل ${pId}`,
+                channelId: pObj.channelId || defaultChannelId,
+                categoryId: pObj.categoryId || pObj.category || defaultCategoryId,
+                supportRoleId: pObj.supportRoleId || pObj.supportRole || defaultRoleId,
+                title: pObj.title || "🎫 قسم الدعم الفني",
+                description: pObj.description || pObj.desc || "اضغط على الزر لفتح تكت جديد.",
+                color: pObj.color || "#5865f2",
+                buttonText: pObj.buttonText || firstButton?.name || "فتح تكت",
+                buttonEmoji: pObj.buttonEmoji || firstButton?.emoji || "📩",
+                buttonStyle: pObj.buttonStyle || firstButton?.style || "Primary"
+              };
+            });
             setTicketPanels(panelsArray);
           } else {
             setTicketPanels([
@@ -613,7 +617,14 @@ export default function App() {
     ticketPanels.forEach((p) => {
       panelsObj[p.id] = {
         ...p,
-        buttons: p.buttons && p.buttons.length > 0 ? p.buttons : [{ name: p.buttonText || p.title || "فتح تذكرة", emoji: p.buttonEmoji || "📩", style: p.buttonStyle || "Primary" }],
+        desc: p.description,
+        category: p.categoryId,
+        supportRole: p.supportRoleId,
+        buttons: Array.isArray(p.buttons) && p.buttons.length > 0
+          ? p.buttons.map((b: any, i: number) => i === 0
+              ? { ...b, name: p.buttonText || b.name, emoji: p.buttonEmoji || b.emoji, style: p.buttonStyle || b.style }
+              : b)
+          : [],
         roles: p.roles || []
       };
     });
