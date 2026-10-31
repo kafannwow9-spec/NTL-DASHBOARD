@@ -3456,7 +3456,12 @@
       }
       
       pickerInstance = document.createElement('div');
-      pickerInstance.className = 'absolute z-50 mt-1 right-0 shadow-2xl rounded-xl border border-white/10 bg-[#111214] flex flex-col overflow-hidden';
+      pickerInstance.className = 'z-[9999] shadow-2xl rounded-xl border border-white/10 bg-[#111214] flex flex-col overflow-hidden';
+  pickerInstance.style.position = 'fixed';
+  pickerInstance.style.width = '340px';
+  pickerInstance.style.maxWidth = 'calc(100vw - 16px)';
+  pickerInstance.style.maxHeight = 'calc(100vh - 16px)';
+  pickerInstance.style.zIndex = '99999';
       // Style to match Discord dark theme
       pickerInstance.style.setProperty('--background', '#111214');
       pickerInstance.style.setProperty('--border-color', '#1e1f22');
@@ -3561,7 +3566,25 @@
       });
 
       pickerInstance.appendChild(emojiPicker);
-      btnElement.parentElement.appendChild(pickerInstance);
+      document.body.appendChild(pickerInstance);
+
+  const buttonRect = btnElement.getBoundingClientRect();
+  const pickerRect = pickerInstance.getBoundingClientRect();
+
+  let pickerLeft = buttonRect.left - pickerRect.width - 8;
+  if (pickerLeft < 8) pickerLeft = 8;
+  if (pickerLeft + pickerRect.width > window.innerWidth - 8) {
+    pickerLeft = window.innerWidth - pickerRect.width - 8;
+  }
+
+  let pickerTop = buttonRect.bottom + 8;
+  if (pickerTop + pickerRect.height > window.innerHeight - 8) {
+    pickerTop = buttonRect.top - pickerRect.height - 8;
+  }
+  pickerTop = Math.max(8, Math.min(pickerTop, window.innerHeight - pickerRect.height - 8));
+
+  pickerInstance.style.left = `${pickerLeft}px`;
+  pickerInstance.style.top = `${pickerTop}px`;
       
       // Close when clicking outside
       document.addEventListener('click', function closePicker(e) {
