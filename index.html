@@ -2841,40 +2841,10 @@ main,section { scroll-margin-top:84px; }
       showToast('تم تسجيل الخروج بنجاح', 'info');
     }
 
-    async function fetchDiscordGuilds(providerToken) {
-      const token = providerToken || localStorage.getItem('ntl_provider_token');
+    async function fetchDiscordGuilds(sessionGuilds = []) {
       let activeGuilds = [];
       let unaddedGuilds = [];
-      let userAdminGuilds = [];
-
-      // 1. If user is logged in via Discord Token (OAuth Implicit Grant), fetch their user guilds directly
-      if (token) {
-        try {
-          const discordRes = await fetch('https://discord.com/api/v10/users/@me/guilds', {
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
-          if (discordRes.ok) {
-            const rawGuilds = await discordRes.json();
-            if (Array.isArray(rawGuilds)) {
-              userAdminGuilds = rawGuilds.filter(g => {
-                if (g.owner === true) return true;
-                if (!g.permissions) return false;
-                const p = BigInt(g.permissions);
-                return (p & 8n) === 8n || (p & 0x20n) === 0x20n;
-              });
-            }
-          } else if (discordRes.status === 401) {
-            // Token expired
-            localStorage.removeItem('ntl_provider_token');
-            localStorage.removeItem('ntl_user_logged_in');
-            localStorage.removeItem('ntl_user_data');
-            updateUIForAuth(false);
-            return;
-          }
-        } catch (err) {
-          console.warn("Could not fetch user guilds directly from Discord API:", err);
-        }
-      }
+      const userAdminGuilds = Array.isArray(sessionGuilds) ? sessionGuilds : [];
 
       // 2. Cross-reference userAdminGuilds with the Bot Server via POST /api/guilds/check
       let checkSuccess = false;
@@ -3113,48 +3083,29 @@ main,section { scroll-margin-top:84px; }
     }
 
     async function checkUserSession() {
-      // 1. Check if returning from Discord OAuth redirect with #access_token=...
-      const hash = window.location.hash || '';
-      if (hash.includes('access_token=')) {
-        const params = new URLSearchParams(hash.replace('#', '?'));
-        const accessToken = params.get('access_token');
-        if (accessToken) {
-          localStorage.setItem('ntl_provider_token', accessToken);
-          window.history.replaceState(null, '', window.location.pathname);
-          try {
-            const userRes = await fetch('https://discord.com/api/v10/users/@me', {
-              headers: { 'Authorization': `Bearer ${accessToken}` }
-            });
-            if (userRes.ok) {
-              const userData = await userRes.json();
-              currentUser = userData;
-              localStorage.setItem('ntl_user_data', JSON.stringify(userData));
-              localStorage.setItem('ntl_user_logged_in', 'true');
-              updateUIForAuth(true, userData);
-              await fetchDiscordGuilds(accessToken);
-              return;
-            }
-          } catch (err) {
-            console.error("Error fetching Discord user profile:", err);
-          }
-        }
-      }
+      try {
+        const res = await fetch('/api/auth/session', {
+          credentials: 'same-origin',
+          cache: 'no-store'
+        });
 
-      // 2. Check saved session in localStorage
-      const savedToken = localStorage.getItem('ntl_provider_token');
-      const savedUserStr = localStorage.getItem('ntl_user_data');
-      if (savedToken && savedUserStr) {
-        try {
-          currentUser = JSON.parse(savedUserStr);
+        const data = await res.json();
+
+        localStorage.removeItem('ntl_provider_token');
+        localStorage.removeItem('ntl_user_data');
+        localStorage.removeItem('ntl_user_logged_in');
+
+        if (res.ok && data.authenticated && data.user) {
+          currentUser = data.user;
           updateUIForAuth(true, currentUser);
-          await fetchDiscordGuilds(savedToken);
+          await fetchDiscordGuilds(data.adminGuilds || []);
           return;
-        } catch (e) {
-          console.warn("Invalid saved user data");
         }
+      } catch (err) {
+        console.error('Could not verify server session:', err);
       }
 
-      // 3. Unauthenticated default -> Show Guest Landing page with Discord Login
+      currentUser = null;
       updateUIForAuth(false);
     }
 
