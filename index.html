@@ -5789,5 +5789,13 @@ main,section { scroll-margin-top:84px; }
       initScrollAnimations();
     });
   </script>
+
+<script>
+  window.loginWithDiscord = function(event) {
+    if (event) event.preventDefault();
+    window.location.assign('/auth/login');
+  };
+</script>
+
 </body>
 </html>
