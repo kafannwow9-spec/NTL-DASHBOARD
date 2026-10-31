@@ -21,6 +21,8 @@
       ]
     },
     "allowImportingTsExtensions": true,
+    "noUncheckedSideEffectImports": false,
     "noEmit": true
-  }
+  },
+  "include": ["src"]
 }

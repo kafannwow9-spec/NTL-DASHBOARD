@@ -1,5 +1,5 @@
 export async function onRequest(context) {
-  const { request, params } = context;
+  const { request, params, env } = context;
   
   // 1. Handle CORS preflight requests
   if (request.method === "OPTIONS") {
@@ -7,7 +7,7 @@ export async function onRequest(context) {
       headers: {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Bot-Secret, X-Ntl-Secret",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Bot-Secret, X-Ntl-Secret, X-NTL-Session",
       }
     });
   }
@@ -28,9 +28,10 @@ export async function onRequest(context) {
   headers.delete('referer');
 
   // Inject authentication secrets for the bot backend API
-  headers.set('X-Bot-Secret', '38dj38nr89oq');
-  headers.set('X-NTL-Secret', '38dj38nr89oq');
-  headers.set('Authorization', 'Bearer 38dj38nr89oq');
+  const botSecret = env?.NTL_BOT_SECRET || '38dj38nr89oq';
+  headers.set('X-Bot-Secret', botSecret);
+  headers.set('X-NTL-Secret', botSecret);
+  headers.set('Authorization', `Bearer ${botSecret}`);
 
   const fetchOptions = {
     method: request.method,

@@ -24,11 +24,12 @@ app.set('trust proxy', true);
 
 // Session setup
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'ntl-bot-dashboard-secret-key-2026',
+  secret: process.env.NTL_SESSION_SECRET || process.env.SESSION_SECRET || 'ntl-bot-dashboard-secret-key-2026',
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: false, // http in dev environment
+    secure: false,
+    sameSite: 'lax',
     maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
   }
 }));
@@ -42,7 +43,7 @@ app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
   }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
-  res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type, Authorization, X-Bot-Secret, X-NTL-Secret, x-ntl-secret, x-bot-secret, authorization, content-type');
+  res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type, Authorization, X-Bot-Secret, X-NTL-Secret, X-NTL-Session, x-ntl-secret, x-bot-secret, x-ntl-session, authorization, content-type');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
@@ -755,50 +756,143 @@ app.get('/api/config-status', (req, res) => {
   });
 });
 
-app.get('/api/auth/me', (req, res) => {
+const nodeCrypto = require('crypto');
+
+function signExpressSessionToken(payloadObj, secret) {
+  const payload = Buffer.from(JSON.stringify(payloadObj), 'utf8').toString('base64url');
+  const sig = nodeCrypto.createHmac('sha256', secret).update(payload).digest('base64url');
+  return `${payload}.${sig}`;
+}
+
+function verifyExpressSessionToken(raw, secret) {
+  if (!raw || !secret) return null;
+  const dotIdx = raw.lastIndexOf('.');
+  if (dotIdx < 1) return null;
+  const payload = raw.slice(0, dotIdx);
+  const sig = raw.slice(dotIdx + 1);
+  const expectedSig = nodeCrypto.createHmac('sha256', secret).update(payload).digest();
+  const actualSig = Buffer.from(sig, 'base64url');
+  if (expectedSig.length !== actualSig.length || !nodeCrypto.timingSafeEqual(expectedSig, actualSig)) {
+    return null;
+  }
+  const data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+  if (!data || typeof data.exp !== 'number' || data.exp < Date.now() / 1000) return null;
+  if (data.u) {
+    return {
+      user: { id: data.u.id, username: data.u.un, global_name: data.u.gn, avatar: data.u.av },
+      adminGuilds: Array.isArray(data.g)
+        ? data.g.map(item => Array.isArray(item) ? { id: item[0], name: item[1], icon: item[2] || null, owner: true, permissions: '40' } : item)
+        : []
+    };
+  }
+  if (data.user) {
+    return { user: data.user, adminGuilds: Array.isArray(data.adminGuilds) ? data.adminGuilds : [] };
+  }
+  return null;
+}
+
+function getExpressSignedSession(req) {
+  const secret = process.env.NTL_SESSION_SECRET || process.env.SESSION_SECRET || 'ntl-bot-dashboard-secret-key-2026';
+  const cookieHeader = req.headers.cookie || '';
+  const cookieMap = {};
+  cookieHeader.split(';').map(v => v.trim()).filter(Boolean).forEach(part => {
+    const i = part.indexOf('=');
+    if (i > 0) cookieMap[part.slice(0, i)] = part.slice(i + 1);
+  });
+  let cookieCombined = cookieMap.ntl_session || '';
+  if (cookieCombined) {
+    for (let i = 1; i <= 8; i++) {
+      if (!cookieMap[`ntl_session_${i}`]) break;
+      cookieCombined += cookieMap[`ntl_session_${i}`];
+    }
+  }
+  const headerToken = (req.headers['x-ntl-session'] || '').trim();
+  for (const candidate of [cookieCombined, headerToken]) {
+    if (!candidate) continue;
+    try {
+      const parsed = verifyExpressSessionToken(candidate, secret);
+      if (parsed && parsed.user) return parsed;
+    } catch (e) {}
+  }
+  return null;
+}
+
+app.get(['/api/auth/session', '/api/auth/me'], (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   if (req.session && req.session.user) {
-    res.json({ authenticated: true, user: req.session.user });
+    return res.json({
+      authenticated: true,
+      user: req.session.user,
+      adminGuilds: req.session.userGuilds || []
+    });
+  }
+  const verified = getExpressSignedSession(req);
+  if (verified) {
+    return res.json({
+      authenticated: true,
+      user: verified.user,
+      adminGuilds: verified.adminGuilds
+    });
+  }
+  res.json({ authenticated: false });
+});
+
+app.all('/api/auth/logout', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.clearCookie('ntl_session', { path: '/' });
+  for (let i = 1; i <= 8; i++) {
+    res.clearCookie(`ntl_session_${i}`, { path: '/' });
+  }
+  if (req.session) {
+    req.session.destroy(() => {
+      res.json({ success: true });
+    });
   } else {
-    res.json({ authenticated: false });
+    res.json({ success: true });
   }
 });
 
-app.post('/api/auth/logout', (req, res) => {
-  req.session.destroy((err) => {
-    if (err) {
-      return res.status(500).json({ error: "Failed to destroy session" });
-    }
-    res.json({ success: true });
-  });
-});
-
-app.get('/api/auth/login', (req, res) => {
+app.get(['/auth/login', '/auth/login/', '/api/auth/login'], (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   const cfg = getMergedConfig();
   if (!cfg.CLIENT_ID || !cfg.REDIRECT_URI) {
     return res.status(400).send("CLIENT_ID or REDIRECT_URI not configured");
   }
-  const discordAuthUrl = `https://discord.com/api/oauth2/authorize?client_id=${cfg.CLIENT_ID}&redirect_uri=${encodeURIComponent(cfg.REDIRECT_URI)}&response_type=code&scope=identify%20guilds`;
+  const discordAuthUrl = `https://discord.com/oauth2/authorize?client_id=${encodeURIComponent(cfg.CLIENT_ID)}&redirect_uri=${encodeURIComponent(cfg.REDIRECT_URI)}&response_type=code&scope=identify%20guilds`;
   res.redirect(discordAuthUrl);
 });
 
 // OAuth Callback
 app.get(['/auth/callback', '/auth/callback/'], async (req, res) => {
-  const { code } = req.query;
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  const { code, error: oauthErr } = req.query;
   const cfg = getMergedConfig();
+
+  if (oauthErr) {
+    return res.redirect('/');
+  }
 
   if (!code) {
     return res.status(400).send("Missing authorization code");
   }
 
   try {
+    const uaHeaders = {
+      'User-Agent': 'NTL-Dashboard (https://ntldashboard.pages.dev, 1.0)',
+      'Accept': 'application/json'
+    };
+
     const tokenResponse = await fetch('https://discord.com/api/v10/oauth2/token', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: {
+        ...uaHeaders,
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
       body: new URLSearchParams({
         client_id: cfg.CLIENT_ID,
         client_secret: cfg.CLIENT_SECRET,
         grant_type: 'authorization_code',
-        code: code,
+        code: String(code),
         redirect_uri: cfg.REDIRECT_URI
       }).toString()
     });
@@ -812,35 +906,84 @@ app.get(['/auth/callback', '/auth/callback/'], async (req, res) => {
     const tokenData = await tokenResponse.json();
     const accessToken = tokenData.access_token;
 
-    // Fetch User Profile
-    const userRes = await fetch('https://discord.com/api/v10/users/@me', {
-      headers: { 'Authorization': `Bearer ${accessToken}` }
-    });
-    if (!userRes.ok) throw new Error("Failed to fetch user profile");
-    const user = await userRes.json();
+    const authHeaders = {
+      ...uaHeaders,
+      'Authorization': `Bearer ${accessToken}`
+    };
 
-    // Fetch User Guilds
-    const guildsRes = await fetch('https://discord.com/api/v10/users/@me/guilds', {
-      headers: { 'Authorization': `Bearer ${accessToken}` }
-    });
+    const [userRes, guildsRes] = await Promise.all([
+      fetch('https://discord.com/api/v10/users/@me', { headers: authHeaders }),
+      fetch('https://discord.com/api/v10/users/@me/guilds', { headers: authHeaders })
+    ]);
+    if (!userRes.ok) throw new Error("Failed to fetch user profile");
     if (!guildsRes.ok) throw new Error("Failed to fetch user guilds");
+    const user = await userRes.json();
     const guilds = await guildsRes.json();
 
-    // Filter Admin Guilds: ADMINISTRATOR (0x8 / 8n) or Owner (owner === true)
-    const adminGuilds = guilds.filter(g => {
-      if (g.owner === true) return true;
-      if (!g.permissions) return false;
-      const perms = BigInt(g.permissions);
-      return (perms & 8n) === 8n;
-    });
+    // Filter Admin/Manager Guilds: ADMINISTRATOR (8n) or MANAGE_GUILD (32n) -> 40n, or Owner
+    const adminGuilds = (Array.isArray(guilds) ? guilds : []).filter(g => {
+      if (g && g.owner === true) return true;
+      try {
+        const perms = BigInt(String(g?.permissions ?? g?.permissions_new ?? '0'));
+        return (perms & 40n) !== 0n;
+      } catch {
+        return false;
+      }
+    }).map(g => ({
+      id: String(g.id),
+      name: g.name || 'Server',
+      icon: g.icon || null,
+      owner: !!g.owner,
+      permissions: g.owner ? '8' : '40'
+    }));
 
-    // Save session
-    req.session.user = user;
+    const cleanUser = {
+      id: String(user.id),
+      username: user.username || 'User',
+      global_name: user.global_name || null,
+      avatar: user.avatar || null
+    };
+
+    req.session.user = cleanUser;
     req.session.accessToken = accessToken;
     req.session.userGuilds = adminGuilds;
 
-    // Direct redirect back to dashboard main page
-    res.redirect('/');
+    const secret = process.env.NTL_SESSION_SECRET || process.env.SESSION_SECRET || 'ntl-bot-dashboard-secret-key-2026';
+    const signedToken = signExpressSessionToken({
+      u: { id: cleanUser.id, un: cleanUser.username, gn: cleanUser.global_name, av: cleanUser.avatar },
+      g: adminGuilds.map(g => [g.id, String(g.name).slice(0, 80), g.icon || '']),
+      exp: Math.floor(Date.now() / 1000) + 604800
+    }, secret);
+
+    const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https';
+    for (let idx = 0, part = 0; idx < signedToken.length; idx += 3200, part++) {
+      const name = part === 0 ? 'ntl_session' : `ntl_session_${part}`;
+      res.cookie(name, signedToken.slice(idx, idx + 3200), {
+        httpOnly: true,
+        secure: isSecure,
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 604800 * 1000
+      });
+    }
+
+    req.session.save(() => {
+      res.status(200).send(`<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head><meta charset="utf-8"><meta http-equiv="refresh" content="1;url=/"><title>جاري تسجيل الدخول...</title></head>
+<body style="background:#05060a;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;font-family:sans-serif">
+  <p>تم تسجيل الدخول بنجاح، جاري فتح لوحة التحكم...</p>
+  <script>
+    (function(){
+      var signed = ${JSON.stringify(signedToken)};
+      try { sessionStorage.setItem('ntl_signed_session', signed); } catch(e) {}
+      try { localStorage.setItem('ntl_signed_session', signed); } catch(e) {}
+      window.location.replace('/');
+    })();
+  </script>
+</body>
+</html>`);
+    });
   } catch (error) {
     console.error("OAuth Error:", error);
     res.status(500).send("Authentication failed. Please check your credentials.");
@@ -1893,6 +2036,19 @@ app.post('/api/admin/keys/delete', (req, res) => {
     return res.json({ success: ok });
   }
   res.status(500).json({ success: false, error: 'Engine not ready' });
+});
+
+// Serve manage.html explicitly for both /manage and /manage.html
+app.get(['/manage', '/manage.html'], (req, res) => {
+  const rootManage = path.join(__dirname, 'manage.html');
+  const distManage = path.join(__dirname, 'dist', 'manage.html');
+  if (fs.existsSync(rootManage)) {
+    return res.sendFile(rootManage);
+  }
+  if (fs.existsSync(distManage)) {
+    return res.sendFile(distManage);
+  }
+  return res.redirect('/');
 });
 
 // Serve frontend SPA index.html fallback or status page

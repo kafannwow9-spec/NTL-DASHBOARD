@@ -96,7 +96,7 @@
     }
 
     /* Remove blue backgrounds from specific IDs found in structure */
-    #primary-drawer, .bg-[#0c0f1c], .bg-[#181d30], .bg-slate-900, .bg-slate-950, .dashboard-card, .glass-3d-card, .server-card, .dark-glass-card {
+    #primary-drawer, .bg-\[\#0c0f1c\], .bg-\[\#181d30\], .bg-slate-900, .bg-slate-950, .dashboard-card, .glass-3d-card, .server-card, .dark-glass-card {
       background: #000000 !important;
     }
 
@@ -983,7 +983,7 @@ main,section { scroll-margin-top:84px; }
     </section>
 
     <!-- VIEWPORT: SERVERS SELECTION HUB -->
-    <section id="viewport-user-home" class="flex flex-col gap-6 animate-fade-in w-full max-w-4xl mx-auto">
+    <section id="viewport-user-home" class="hidden flex flex-col gap-6 animate-fade-in w-full max-w-4xl mx-auto">
       
       <!-- TOP SECTION: STATS & PROFILE -->
       <div class="flex items-center justify-between p-6 bg-[rgba(255,255,255,0.02)] border border-white/5 rounded-3xl backdrop-blur-md shadow-xl">
@@ -2456,6 +2456,15 @@ main,section { scroll-margin-top:84px; }
       return localStorage.getItem('ntl_api_secret') || '38dj38nr89oq';
     }
 
+    function getSignedSessionHeader() {
+      try {
+        const signed = sessionStorage.getItem('ntl_signed_session') || localStorage.getItem('ntl_signed_session') || '';
+        return signed ? { 'X-NTL-Session': signed } : {};
+      } catch (e) {
+        return {};
+      }
+    }
+
     function getApiHeaders(extraHeaders = {}) {
       const secret = getApiSecret();
       return {
@@ -2463,6 +2472,7 @@ main,section { scroll-margin-top:84px; }
         'Authorization': `Bearer ${secret}`,
         'X-Bot-Secret': secret,
         'X-NTL-Secret': secret,
+        ...getSignedSessionHeader(),
         ...extraHeaders
       };
     }
@@ -2479,7 +2489,12 @@ main,section { scroll-margin-top:84px; }
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 8000);
-      const fetchOpts = { ...options, headers, signal: options.signal || controller.signal };
+      const fetchOpts = {
+        credentials: 'same-origin',
+        ...options,
+        headers,
+        signal: options.signal || controller.signal
+      };
 
       try {
         const res = await fetch(url, fetchOpts);
@@ -2831,12 +2846,19 @@ main,section { scroll-margin-top:84px; }
 
     async function logout() {
       try {
-        await apiFetch('/api/auth/logout', { method: 'POST' });
+        await fetch('/api/auth/logout', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { ...getSignedSessionHeader() }
+        });
       } catch (e) {}
       currentUser = null;
-      localStorage.removeItem('ntl_user_logged_in');
-      localStorage.removeItem('ntl_user_data');
-      localStorage.removeItem('ntl_provider_token');
+      try {
+        ['ntl_signed_session', 'ntl_user_logged_in', 'ntl_user_data', 'ntl_provider_token', 'ntl_user_session', 'ntl_admin_guilds', 'ntl_discord_token'].forEach(k => {
+          localStorage.removeItem(k);
+          sessionStorage.removeItem(k);
+        });
+      } catch (e) {}
       updateUIForAuth(false);
       showToast('تم تسجيل الخروج بنجاح', 'info');
     }
@@ -3040,7 +3062,7 @@ main,section { scroll-margin-top:84px; }
         renderServerLists([]);
       }
 
-      lucide.createIcons();
+      if (window.lucide) lucide.createIcons();
     }
 
     async function loadAllBotServersDirectly() {
@@ -3079,30 +3101,52 @@ main,section { scroll-margin-top:84px; }
       document.getElementById('viewport-server-dashboard')?.classList.add('hidden');
       document.getElementById('viewport-user-home')?.classList.remove('hidden');
 
-      lucide.createIcons();
+      if (window.lucide) lucide.createIcons();
     }
 
     async function checkUserSession() {
+      let data = null;
+      let resOk = false;
       try {
         const res = await fetch('/api/auth/session', {
+          method: 'GET',
           credentials: 'same-origin',
-          cache: 'no-store'
+          cache: 'no-store',
+          headers: {
+            'Accept': 'application/json',
+            ...getSignedSessionHeader()
+          }
         });
-
-        const data = await res.json();
-
-        localStorage.removeItem('ntl_provider_token');
-        localStorage.removeItem('ntl_user_data');
-        localStorage.removeItem('ntl_user_logged_in');
-
-        if (res.ok && data.authenticated && data.user) {
-          currentUser = data.user;
-          updateUIForAuth(true, currentUser);
-          await fetchDiscordGuilds(data.adminGuilds || []);
-          return;
+        resOk = res.ok;
+        if (res.ok) {
+          data = await res.json();
         }
       } catch (err) {
         console.error('Could not verify server session:', err);
+      }
+
+      try {
+        localStorage.removeItem('ntl_provider_token');
+        localStorage.removeItem('ntl_user_data');
+        localStorage.removeItem('ntl_user_logged_in');
+      } catch (e) {}
+
+      if (resOk && data && data.authenticated && data.user) {
+        currentUser = data.user;
+        updateUIForAuth(true, currentUser);
+        try {
+          await fetchDiscordGuilds(data.adminGuilds || []);
+        } catch (guildErr) {
+          console.warn('Error fetching Discord guilds after session verification:', guildErr);
+        }
+        return;
+      }
+
+      if (resOk && data && data.authenticated === false) {
+        try {
+          sessionStorage.removeItem('ntl_signed_session');
+          localStorage.removeItem('ntl_signed_session');
+        } catch (e) {}
       }
 
       currentUser = null;
@@ -5731,9 +5775,19 @@ main,section { scroll-margin-top:84px; }
       });
     }
 
+    window.addEventListener('message', (event) => {
+      if (event.data && event.data.type === 'OAUTH_AUTH_SUCCESS') {
+        if (event.data.sessionToken) {
+          try { sessionStorage.setItem('ntl_signed_session', event.data.sessionToken); } catch (e) {}
+          try { localStorage.setItem('ntl_signed_session', event.data.sessionToken); } catch (e) {}
+        }
+        checkUserSession();
+      }
+    });
+
     // Dom Ready
     window.addEventListener('DOMContentLoaded', () => {
-      lucide.createIcons();
+      if (window.lucide) lucide.createIcons();
       initTheme();
       if (currentGlobalLang !== 'ar') setGlobalLanguage(currentGlobalLang);
       checkUserSession();

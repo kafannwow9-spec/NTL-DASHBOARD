@@ -6,7 +6,3 @@ coverage/
 *.log
 .env*
 !.env.example
-config.json
-db.json
-config.json
-ntl-merged/

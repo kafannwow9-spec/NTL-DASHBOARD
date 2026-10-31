@@ -94,6 +94,8 @@ interface TicketPanel {
   translationEnabled?: boolean;
   translationTitle?: string;
   translationDesc?: string;
+  buttons?: any[];
+  roles?: any[];
 }
 
 interface SuggestionPanel {
