@@ -1762,9 +1762,6 @@
     async function apiFetch(url, options = {}) {
       const headers = Object.assign({
         'Content-Type': 'application/json',
-        'X-Bot-Secret': '38dj38nr89oq',
-        'X-NTL-Secret': '38dj38nr89oq',
-        'Authorization': 'Bearer 38dj38nr89oq',
         ...getSignedSessionHeader()
       }, options.headers || {});
       return fetch(url, Object.assign({ credentials: 'same-origin' }, options, { headers }));
@@ -1973,9 +1970,6 @@
           const channels = data.channels || [];
           const categories = data.categories || [];
           const roles = data.roles || [];
-          guildChannelsCache = channels;
-          guildCategoriesCache = categories;
-          guildRolesCache = roles;
 
           if (sidebarStatus) {
             sidebarStatus.textContent = `متصل (${channels.length} روم • ${roles.length} رتبة)`;
@@ -2005,19 +1999,10 @@
           // Load Module Settings
           if (data.settings) {
             const s = data.settings;
-            if (s.panels && typeof s.panels === 'object' && Object.keys(s.panels).length > 0) {
-              currentPanels = s.panels;
-            }
-            if (s.customEmbeds && typeof s.customEmbeds === 'object' && Object.keys(s.customEmbeds).length > 0) {
-              currentCustomEmbeds = s.customEmbeds;
-            }
-            if (Array.isArray(s.stickyPanels) && s.stickyPanels.length > 0) {
-              currentStickyPanels = s.stickyPanels;
-            } else if (s.stickyPanels && typeof s.stickyPanels === 'object' && !Array.isArray(s.stickyPanels)) {
-              const vals = Object.values(s.stickyPanels);
-              if (vals.length > 0) currentStickyPanels = vals;
-            }
-            if (Array.isArray(s.autoResponses)) currentAutoResponses = s.autoResponses;
+            if (s.panels) currentPanels = s.panels;
+            if (s.customEmbeds) currentCustomEmbeds = s.customEmbeds;
+            if (s.stickyPanels) currentStickyPanels = s.stickyPanels;
+            if (s.autoResponses) currentAutoResponses = s.autoResponses;
 
             // Protection
             if (s.protection) {
@@ -2059,16 +2044,18 @@
               loadWelcomeSettingsIntoUI(s.welcome);
             }
           }
+
+          // Re-render submodules
+          renderPanelsSelector();
+          loadSelectedPanelIntoUI();
+          renderCustomEmbedDropdown();
+          if (Object.keys(currentCustomEmbeds).length > 0) {
+            loadCustomEmbedToForm(Object.keys(currentCustomEmbeds)[0]);
+          }
+          renderStickyPanelsSelector();
         }
       } catch(err) {
         console.warn('Error loading guild data:', err.message);
-      } finally {
-        // Re-render submodules with guaranteed defaults
-        renderPanelsSelector();
-        loadSelectedPanelIntoUI();
-        renderCustomEmbedDropdown();
-        renderStickyPanelsSelector();
-        renderStickyPanelForm();
       }
 
       renderServerStreams();
@@ -2124,22 +2111,6 @@
 
       const topTitle = document.getElementById('topbar-tab-title');
       if (topTitle) topTitle.textContent = titles[tabName] || tabName;
-
-      // Trigger submodule re-renders so panels/embeds are always visible immediately
-      if (tabName === 'Tickets') {
-        renderPanelsSelector();
-        loadSelectedPanelIntoUI();
-      } else if (tabName === 'Embeds') {
-        renderCustomEmbedDropdown();
-        if (selectedCustomEmbedId) loadCustomEmbedToForm(selectedCustomEmbedId);
-        updateEmbedPreview();
-      } else if (tabName === 'StickyPanels') {
-        renderStickyPanelsSelector();
-        renderStickyPanelForm();
-        updateStickyPreview();
-      } else if (tabName === 'Suggestions') {
-        updateSuggestionsPreview();
-      }
 
       toggleMobileSidebar(false);
       lucide.createIcons();
@@ -2476,9 +2447,6 @@
     let selectedPanelId = 'p1';
 
     function createDefaultPanel(id, title) {
-      const defaultChannel = (guildChannelsCache && guildChannelsCache[0]) ? guildChannelsCache[0].id : '';
-      const defaultCategory = (guildCategoriesCache && guildCategoriesCache[0]) ? guildCategoriesCache[0].id : '';
-      const defaultRole = (guildRolesCache && guildRolesCache[0]) ? guildRolesCache[0].id : '';
       return {
         id: id,
         title: title || 'قسم الدعم الفني والتذاكر',
@@ -2486,13 +2454,12 @@
         welcome: 'مرحباً بك في التذكرة! تفضل بكتابة استفسارك وسيقوم فريق الدعم بالرد عليك في أقرب وقت.',
         welcome_img: '',
         color: '#5865f2',
-        channelId: defaultChannel,
-        categoryId: defaultCategory,
-        supportRole: defaultRole,
+        channelId: '',
+        categoryId: '',
         displayType: 'buttons',
-        roles: defaultRole ? [defaultRole] : [],
+        roles: [],
         buttons: [
-          { name: 'فتح تذكرة', emoji: '', style: 'Primary', categoryId: defaultCategory, roleId: defaultRole, description: 'فتح تذكرة تواصل عامة' }
+          { name: 'فتح تذكرة', emoji: '', style: 'Primary', categoryId: '', roleId: '', description: 'فتح تذكرة تواصل عامة' }
         ]
       };
     }
@@ -2500,8 +2467,9 @@
     function renderPanelsSelector() {
       const container = document.getElementById('panel-selector-container');
       if (!container) return;
-      if (!currentPanels || typeof currentPanels !== 'object' || Array.isArray(currentPanels) || Object.keys(currentPanels).length === 0) {
-        currentPanels = { 'p1': createDefaultPanel('p1', 'لوحة الدعم الرئيسية') };
+      const pIds = Object.keys(currentPanels);
+      if (pIds.length === 0) {
+        currentPanels['p1'] = createDefaultPanel('p1', 'لوحة الدعم الرئيسية');
         selectedPanelId = 'p1';
       }
       if (!currentPanels[selectedPanelId]) {
@@ -2529,9 +2497,6 @@
     }
 
     function createNewPanel() {
-      if (!currentPanels || typeof currentPanels !== 'object' || Array.isArray(currentPanels)) {
-        currentPanels = {};
-      }
       const newId = 'p_' + Date.now().toString(36);
       const count = Object.keys(currentPanels).length + 1;
       currentPanels[newId] = createDefaultPanel(newId, `لوحة دعم جديدة #${count}`);
@@ -2540,7 +2505,6 @@
       loadSelectedPanelIntoUI();
       showToast('تم إنشاء بانل جديد! قم بتعديل إعداداته ونشره.', 'success');
     }
-    window.createNewPanel = createNewPanel;
 
     function deleteCurrentPanel() {
       if (Object.keys(currentPanels).length <= 1) {
@@ -3259,32 +3223,9 @@
     let selectedCustomEmbedId = 'emb_default';
     let currentGuildRoles = [];
 
-    function createDefaultCustomEmbed(id = 'emb_default', name = 'إيمبد القوانين والترحيب') {
-      return {
-        id,
-        name,
-        type: 'v2',
-        title: '📋 قوانين وإرشادات السيرفر',
-        desc: 'أهلاً بك في سيرفرنا! يرجى الالتزام بالقوانين التالية:\n1. الاحترام المتبادل بين الأعضاء\n---\n2. يمنع السب والإساءة بجميع أشكالها\n{type: 18}\n3. يمنع الإعلانات والروابط بدون إذن الإدارة',
-        color: '#5865f2',
-        img: '',
-        footer: 'NTL Server System • 2026',
-        buttons: [
-          { label: 'استلام رتبة العضوية', style: 'Success', emoji: '⭐', action: 'give_role', roleId: '', replyMessage: 'تم منحك الرتبة بنجاح!' }
-        ]
-      };
-    }
-
     function renderCustomEmbedDropdown() {
       const select = document.getElementById('embed-select-list');
       if (!select) return;
-      if (!currentCustomEmbeds || typeof currentCustomEmbeds !== 'object' || Array.isArray(currentCustomEmbeds) || Object.keys(currentCustomEmbeds).length === 0) {
-        currentCustomEmbeds = { 'emb_default': createDefaultCustomEmbed() };
-        selectedCustomEmbedId = 'emb_default';
-      }
-      if (!currentCustomEmbeds[selectedCustomEmbedId]) {
-        selectedCustomEmbedId = Object.keys(currentCustomEmbeds)[0];
-      }
       select.innerHTML = '';
       Object.keys(currentCustomEmbeds).forEach(id => {
         const emb = currentCustomEmbeds[id];
@@ -3298,27 +3239,22 @@
     }
 
     function createNewCustomEmbed() {
-      if (!currentCustomEmbeds || typeof currentCustomEmbeds !== 'object' || Array.isArray(currentCustomEmbeds)) {
-        currentCustomEmbeds = {};
-      }
-      const count = Object.keys(currentCustomEmbeds).length + 1;
       const newId = 'emb_' + Date.now();
       currentCustomEmbeds[newId] = {
         id: newId,
-        name: `إيمبد مخصص جديد #${count}`,
+        name: 'إيمبد مخصص جديد',
         type: 'v2',
-        title: `عنوان الإيمبد الجديد #${count}`,
-        desc: 'محتوى الإيمبد التفاعلي...',
+        title: 'عنوان الإيمبد الجديد',
+        desc: 'محتوى الإيمبد...',
         color: '#5865f2',
         img: '',
-        footer: 'NTL Server System • 2026',
+        footer: '',
         buttons: []
       };
       selectedCustomEmbedId = newId;
       renderCustomEmbedDropdown();
       showToast('تم إضافة إيمبد جديد، قم بتخصيصه وتعبئة بياناته', 'success');
     }
-    window.createNewCustomEmbed = createNewCustomEmbed;
 
     function deleteCurrentCustomEmbed() {
       if (Object.keys(currentCustomEmbeds).length <= 1) {
@@ -4084,32 +4020,38 @@
     // ==========================================
     // STICKY AUTO PANELS JAVASCRIPT ENGINE
     // ==========================================
-    function createDefaultStickyPanelsList() {
-      const defaultChannel = (guildChannelsCache && guildChannelsCache[0]) ? guildChannelsCache[0].id : '';
-      return [
-        {
-          id: 'spanel-1',
-          name: 'بانل روم الشات العام',
-          channelId: defaultChannel,
-          title: '📌 تنبيه وقوانين الروم',
-          content: 'مرحباً بكم في الروم! يرجى الالتزام بالاحترام المتبادل وعدم السبام 💖\n\n• يتجدد هذا البانل تلقائياً في الأسفل مع كل رسالة جديدة.',
-          enabled: true,
-          embed: true,
-          color: '#5865f2',
-          imageUrl: '',
-          footer: 'NTL Protection & Auto-Panel System'
-        }
-      ];
-    }
-
-    let currentStickyPanels = createDefaultStickyPanelsList();
+    let currentStickyPanels = [
+      {
+        id: 'spanel-1',
+        name: 'بانل روم الشات العام',
+        channelId: '',
+        title: ' تنبيه وقوانين الروم',
+        content: 'مرحباً بكم في الروم! يرجى الالتزام بالاحترام المتبادل وعدم السبام \n\n• يتجدد هذا البانل تلقائياً في الأسفل مع كل رسالة جديدة.',
+        enabled: true,
+        embed: true,
+        color: '#5865f2',
+        imageUrl: '',
+        footer: 'NTL Protection & Auto-Panel System'
+      }
+    ];
     let selectedStickyPanelId = 'spanel-1';
 
     function renderStickyPanelsSelector() {
       const container = document.getElementById('sticky-panels-selector-container');
       if (!container) return;
-      if (!Array.isArray(currentStickyPanels) || currentStickyPanels.length === 0) {
-        currentStickyPanels = createDefaultStickyPanelsList();
+      if (!currentStickyPanels || currentStickyPanels.length === 0) {
+        currentStickyPanels = [{
+          id: 'spanel-1',
+          name: 'بانل روم تلقائي #1',
+          channelId: '',
+          title: ' تنبيه وقوانين الروم',
+          content: 'مرحباً بكم في الروم! يرجى الالتزام بالاحترام المتبادل وعدم السبام \n\n• يتجدد هذا البانل تلقائياً في الأسفل مع كل رسالة جديدة.',
+          enabled: true,
+          embed: true,
+          color: '#5865f2',
+          imageUrl: '',
+          footer: 'NTL Protection & Auto-Panel System'
+        }];
         selectedStickyPanelId = 'spanel-1';
       }
 
@@ -4143,16 +4085,14 @@
     }
 
     function addStickyPanel() {
-      if (!Array.isArray(currentStickyPanels)) currentStickyPanels = [];
       updateStickyPanelFromUI();
       const newId = 'spanel-' + Date.now();
-      const defaultChannel = (guildChannelsCache && guildChannelsCache[0]) ? guildChannelsCache[0].id : '';
       const newPanel = {
         id: newId,
         name: `بانل روم تلقائي #${currentStickyPanels.length + 1}`,
-        channelId: defaultChannel,
-        title: '📌 تنبيه وقوانين الروم',
-        content: 'مرحباً بكم في الروم! يرجى الالتزام بالاحترام المتبادل وعدم السبام 💖\n\n• يتجدد هذا البانل تلقائياً في الأسفل مع كل رسالة جديدة.',
+        channelId: (guildChannelsCache && guildChannelsCache[0]) ? guildChannelsCache[0].id : '',
+        title: ' تنبيه وقوانين الروم',
+        content: 'مرحباً بكم في الروم! يرجى الالتزام بالاحترام المتبادل وعدم السبام \n\n• يتجدد هذا البانل تلقائياً في الأسفل مع كل رسالة جديدة.',
         enabled: true,
         embed: true,
         color: '#5865f2',
@@ -4162,14 +4102,11 @@
       currentStickyPanels.push(newPanel);
       selectedStickyPanelId = newId;
       renderStickyPanelsSelector();
-      renderStickyPanelForm();
-      showToast('تم إنشاء وإضافة بانل تلقائي جديد بنجاح!', 'success');
+      showToast('تم إضافة بانل تلقائي جديد، يمكنك تخصيصه وتفعيله بالروم!', 'success');
     }
-    window.addStickyPanel = addStickyPanel;
-    window.createNewStickyPanel = addStickyPanel;
 
     function deleteCurrentStickyPanel() {
-      if (!Array.isArray(currentStickyPanels) || currentStickyPanels.length <= 1) {
+      if (currentStickyPanels.length <= 1) {
         showToast('يجب الاحتفاظ ببانل تلقائي واحد على الأقل', 'error');
         return;
       }
@@ -4346,7 +4283,6 @@
     }
 
     function updateStickyPanelFromUI() {
-      if (!Array.isArray(currentStickyPanels)) currentStickyPanels = createDefaultStickyPanelsList();
       const p = currentStickyPanels.find(item => item.id === selectedStickyPanelId);
       if (!p) return;
 
@@ -4917,13 +4853,6 @@
     
 
     window.addEventListener('DOMContentLoaded', () => {
-      // Initialize submodules with guaranteed defaults immediately
-      renderPanelsSelector();
-      loadSelectedPanelIntoUI();
-      renderCustomEmbedDropdown();
-      renderStickyPanelsSelector();
-      renderStickyPanelForm();
-
       lucide.createIcons();
       updateAuthButtonsUI();
       loadInitialData();

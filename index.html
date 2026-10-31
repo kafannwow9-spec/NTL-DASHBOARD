@@ -2832,227 +2832,17 @@ main,section { scroll-margin-top:84px; }
       lucide.createIcons();
     }
 
-    function getGuildIconUrl(guild) {
-      if (!guild) return 'https://cdn.discordapp.com/embed/avatars/0.png';
-      if (guild.icon) {
-        if (guild.icon.startsWith('http')) return guild.icon;
-        return `https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.png`;
-      }
-      return 'https://cdn.discordapp.com/embed/avatars/0.png';
-    }
-
-    function goHome() {
-      const spinner = document.getElementById('loading-spinner-modal');
-      if (spinner) spinner.classList.add('hidden');
-      document.getElementById('viewport-guest')?.classList.add('hidden');
-      document.getElementById('viewport-server-dashboard')?.classList.add('hidden');
-      document.getElementById('viewport-user-home')?.classList.remove('hidden');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      if (window.lucide) lucide.createIcons();
-    }
-    window.goHome = goHome;
-
     // Select Server Handler (Fetches channels, categories & guild settings directly)
     async function selectServer(guildId, name, icon) {
-      if (!guildId) return;
-      const gIdStr = String(guildId);
-      selectedGuildId = gIdStr;
-      selectedGuild = {
-        id: gIdStr,
-        name: name || (selectedGuild && selectedGuild.id === gIdStr ? selectedGuild.name : 'السيرفر'),
-        icon: icon || (selectedGuild && selectedGuild.id === gIdStr ? selectedGuild.icon : null)
-      };
-
-      const spinner = document.getElementById('loading-spinner-modal');
-      if (spinner) spinner.classList.remove('hidden');
-
-      // Update header banner
-      const titleEl = document.getElementById('selected-server-title');
-      if (titleEl) titleEl.textContent = selectedGuild.name;
-
-      const avatarEl = document.getElementById('selected-server-avatar-lg');
-      const iconUrl = getGuildIconUrl(selectedGuild);
-      if (avatarEl) {
-        avatarEl.innerHTML = `<img src="${iconUrl}" onerror="this.onerror=null; this.src='https://cdn.discordapp.com/embed/avatars/0.png'" class="w-full h-full object-cover">`;
-      }
-
-      const headerBg = document.getElementById('server-header-bg');
-      if (headerBg && iconUrl) headerBg.style.backgroundImage = `url('${iconUrl}')`;
-
-      const drawerName = document.getElementById('drawer-selected-server-name');
-      if (drawerName) drawerName.textContent = selectedGuild.name;
-
-      showToast(`جاري جلب إعدادات ورومات سيرفر: ${selectedGuild.name}...`, 'info');
-
-      try {
-        const res = await apiFetch(`/api/guild-settings/${gIdStr}`);
-        if (res.ok) {
-          const data = await res.json();
-          const channels = data.channels || [];
-          const categories = data.categories || [];
-          const roles = data.roles || [];
-          guildChannelsCache = channels;
-          guildCategoriesCache = categories;
-          guildRolesCache = roles;
-
-          const membersCountEl = document.getElementById('selected-server-members-count');
-          if (membersCountEl) {
-            membersCountEl.textContent = `${channels.length} روم • ${roles.length} رتبة • بوت متصل`;
-          }
-
-          // Populate Channel Dropdowns in all modules
-          const chOptions = `<option value="">-- اختر القناة --</option>` + channels.map(c => `<option value="${c.id}"># ${escapeHtml(c.name)}</option>`).join('');
-          ['ticket-channelId', 'welcome-channelId', 'script-channelId', 'key-channelId', 'azk-channelId', 'sug-channelId', 'prot-logChannel', 'emb-channelId', 'sticky-channelId'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.innerHTML = chOptions;
-          });
-
-          // Populate Category Dropdowns
-          const catOptions = `<option value="">-- بدون تحديد (افتراضي) --</option>` + categories.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
-          const catEl = document.getElementById('ticket-categoryId');
-          if (catEl) catEl.innerHTML = catOptions;
-
-          // Populate Role Dropdowns
-          const roleOptions = `<option value="">-- بدون تحديد (الجميع) --</option>` + roles.map(r => `<option value="${r.id}">${escapeHtml(r.name)}</option>`).join('');
-          const roleEl = document.getElementById('ticket-supportRole');
-          if (roleEl) roleEl.innerHTML = roleOptions;
-          const addRoleSelectEl = document.getElementById('ticket-add-role-select');
-          if (addRoleSelectEl) {
-            addRoleSelectEl.innerHTML = `<option value="">-- اختر رتبة لإضافتها لطاقم الدعم --</option>` + roles.map(r => `<option value="${r.id}">${escapeHtml(r.name)}</option>`).join('');
-          }
-
-          // Load Module Settings
-          if (data.settings) {
-            const s = data.settings;
-            if (s.panels && typeof s.panels === 'object' && Object.keys(s.panels).length > 0) currentPanels = s.panels;
-            if (s.customEmbeds && typeof s.customEmbeds === 'object' && Object.keys(s.customEmbeds).length > 0) currentCustomEmbeds = s.customEmbeds;
-            if (Array.isArray(s.stickyPanels) && s.stickyPanels.length > 0) {
-              currentStickyPanels = s.stickyPanels;
-            } else if (s.stickyPanels && typeof s.stickyPanels === 'object') {
-              const vals = Object.values(s.stickyPanels);
-              if (vals.length > 0) currentStickyPanels = vals;
-            }
-            if (Array.isArray(s.autoResponses)) currentAutoResponses = s.autoResponses;
-
-            // Protection
-            if (s.protection) {
-              const p = s.protection;
-              if (document.getElementById('prot-bot')) document.getElementById('prot-bot').checked = p.antiBot !== false;
-              if (document.getElementById('prot-channels')) document.getElementById('prot-channels').checked = p.antiChannelRaid !== false;
-              if (document.getElementById('prot-spam')) document.getElementById('prot-spam').checked = p.antiSpam !== false;
-              if (document.getElementById('prot-links')) document.getElementById('prot-links').checked = p.antiLinks !== false;
-              if (p.logChannel && document.getElementById('prot-logChannel')) document.getElementById('prot-logChannel').value = p.logChannel;
-            }
-
-            // Keys
-            const dk = s.deltaKeys || s.deltaKey;
-            if (dk) {
-              if (document.getElementById('key-enabled')) document.getElementById('key-enabled').checked = dk.enabled !== false;
-              if (dk.channelId && document.getElementById('key-channelId')) document.getElementById('key-channelId').value = dk.channelId;
-              if (dk.method && document.getElementById('key-method')) document.getElementById('key-method').value = dk.method;
-            }
-
-            // Suggestions
-            if (s.suggestions) {
-              const sug = s.suggestions;
-              if (document.getElementById('sug-enabled')) document.getElementById('sug-enabled').checked = sug.enabled !== false;
-              if (sug.channelId && document.getElementById('sug-channelId')) document.getElementById('sug-channelId').value = sug.channelId;
-              if (sug.title && document.getElementById('sug-title')) document.getElementById('sug-title').value = sug.title;
-              if (sug.description && document.getElementById('sug-description')) document.getElementById('sug-description').value = sug.description;
-            }
-
-            // Azkar
-            if (s.azkar) {
-              const azk = s.azkar;
-              if (document.getElementById('azk-enabled')) document.getElementById('azk-enabled').checked = azk.enabled !== false;
-              if (azk.channelId && document.getElementById('azk-channelId')) document.getElementById('azk-channelId').value = azk.channelId;
-              if (azk.interval && document.getElementById('azk-interval')) document.getElementById('azk-interval').value = azk.interval;
-            }
-
-            // Welcome
-            if (s.welcome && typeof loadWelcomeSettingsIntoUI === 'function') {
-              loadWelcomeSettingsIntoUI(s.welcome);
-            }
-          }
-
-          showToast(`تم مزامنة إعدادات ورومات "${selectedGuild.name}" بنجاح!`, 'success');
-        } else {
-          showToast(`تم فتح لوحة تحكم "${selectedGuild.name}" بالإعدادات الحالية`, 'info');
-        }
-      } catch (err) {
-        console.warn('Error loading guild data:', err.message);
-        showToast(`تم فتح السيرفر "${selectedGuild.name}" بنجاح`, 'info');
-      } finally {
-        if (spinner) spinner.classList.add('hidden');
-
-        // Render submodules
-        if (typeof renderPanelsSelector === 'function') renderPanelsSelector();
-        if (typeof loadSelectedPanelIntoUI === 'function') loadSelectedPanelIntoUI();
-        if (typeof renderCustomEmbedDropdown === 'function') renderCustomEmbedDropdown();
-        if (typeof renderStickyPanelsSelector === 'function') renderStickyPanelsSelector();
-        if (typeof renderStickyPanelForm === 'function') renderStickyPanelForm();
-
-        // Switch viewports to server management dashboard
-        document.getElementById('viewport-guest')?.classList.add('hidden');
-        document.getElementById('viewport-user-home')?.classList.add('hidden');
-        document.getElementById('viewport-server-dashboard')?.classList.remove('hidden');
-
-        switchServerTab('tickets');
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        if (window.lucide) lucide.createIcons();
-      }
-    }
-    window.selectServer = selectServer;
-
-    function switchServerTab(moduleName) {
-      const tabMap = {
-        'tickets': 'mod-tickets',
-        'sticky_panels': 'mod-sticky_panels',
-        'embeds': 'mod-embeds',
-        'suggestions': 'mod-suggestions',
-        'keys': 'mod-keys',
-        'welcome': 'mod-welcome',
-        'protection': 'mod-protection',
-        'azkar': 'mod-azkar',
-        'responses': 'mod-responses',
-        'scripts': 'mod-scripts'
-      };
-
-      document.querySelectorAll('.module-tab').forEach(el => el.classList.add('hidden'));
-      const targetId = tabMap[moduleName] || `mod-${moduleName}`;
-      const targetEl = document.getElementById(targetId);
-      if (targetEl) targetEl.classList.remove('hidden');
-
-      document.querySelectorAll('.server-tab-btn').forEach(btn => {
-        btn.classList.remove('bg-purple-600', 'text-white');
-        btn.classList.add('bg-white/5', 'text-slate-300');
+      // Keep the first dashboard's login and server list, then open the full
+      // management dashboard from the second project for the chosen guild.
+      const params = new URLSearchParams({
+        guildId: String(guildId),
+        name: name || '',
+        icon: icon || ''
       });
-      const activeBtn = document.getElementById(`tab-btn-${moduleName}`);
-      if (activeBtn) {
-        activeBtn.classList.remove('bg-white/5', 'text-slate-300');
-        activeBtn.classList.add('bg-purple-600', 'text-white');
-      }
-
-      if (moduleName === 'tickets') {
-        renderPanelsSelector();
-        loadSelectedPanelIntoUI();
-      } else if (moduleName === 'embeds') {
-        renderCustomEmbedDropdown();
-        if (selectedCustomEmbedId) loadCustomEmbedToForm(selectedCustomEmbedId);
-        updateEmbedPreview();
-      } else if (moduleName === 'sticky_panels') {
-        renderStickyPanelsSelector();
-        renderStickyPanelForm();
-        updateStickyPreview();
-      } else if (moduleName === 'suggestions') {
-        updateSuggestionsPreview();
-      }
-
-      const modContainer = document.getElementById('server-modules-container');
-      modContainer?.scrollIntoView({ behavior: 'smooth' });
-      if (window.lucide) lucide.createIcons();
+      window.location.href = `/manage.html?${params.toString()}`;
     }
-    window.switchServerTab = switchServerTab;
 
     async function logout() {
       try {
@@ -3349,12 +3139,6 @@ main,section { scroll-margin-top:84px; }
         } catch (guildErr) {
           console.warn('Error fetching Discord guilds after session verification:', guildErr);
         }
-
-        const urlParams = new URLSearchParams(window.location.search);
-        const urlGuildId = urlParams.get('guildId');
-        if (urlGuildId) {
-          selectServer(urlGuildId, urlParams.get('name') || '', urlParams.get('icon') || '');
-        }
         return;
       }
 
@@ -3374,9 +3158,6 @@ main,section { scroll-margin-top:84px; }
     let selectedPanelId = 'p1';
 
     function createDefaultPanel(id, title) {
-      const defaultChannel = (guildChannelsCache && guildChannelsCache[0]) ? guildChannelsCache[0].id : '';
-      const defaultCategory = (guildCategoriesCache && guildCategoriesCache[0]) ? guildCategoriesCache[0].id : '';
-      const defaultRole = (guildRolesCache && guildRolesCache[0]) ? guildRolesCache[0].id : '';
       return {
         id: id,
         title: title || 'قسم الدعم الفني والتذاكر',
@@ -3384,13 +3165,12 @@ main,section { scroll-margin-top:84px; }
         welcome: 'مرحباً بك في التذكرة! تفضل بكتابة استفسارك وسيقوم فريق الدعم بالرد عليك في أقرب وقت.',
         welcome_img: '',
         color: '#5865f2',
-        channelId: defaultChannel,
-        categoryId: defaultCategory,
-        supportRole: defaultRole,
+        channelId: '',
+        categoryId: '',
         displayType: 'buttons',
-        roles: defaultRole ? [defaultRole] : [],
+        roles: [],
         buttons: [
-          { name: 'فتح تذكرة', emoji: '', style: 'Primary', categoryId: defaultCategory, roleId: defaultRole, description: 'فتح تذكرة تواصل عامة' }
+          { name: 'فتح تذكرة', emoji: '', style: 'Primary', categoryId: '', roleId: '', description: 'فتح تذكرة تواصل عامة' }
         ]
       };
     }
@@ -3398,8 +3178,9 @@ main,section { scroll-margin-top:84px; }
     function renderPanelsSelector() {
       const container = document.getElementById('panel-selector-container');
       if (!container) return;
-      if (!currentPanels || typeof currentPanels !== 'object' || Array.isArray(currentPanels) || Object.keys(currentPanels).length === 0) {
-        currentPanels = { 'p1': createDefaultPanel('p1', 'لوحة الدعم الرئيسية') };
+      const pIds = Object.keys(currentPanels);
+      if (pIds.length === 0) {
+        currentPanels['p1'] = createDefaultPanel('p1', 'لوحة الدعم الرئيسية');
         selectedPanelId = 'p1';
       }
       if (!currentPanels[selectedPanelId]) {
@@ -3427,9 +3208,6 @@ main,section { scroll-margin-top:84px; }
     }
 
     function createNewPanel() {
-      if (!currentPanels || typeof currentPanels !== 'object' || Array.isArray(currentPanels)) {
-        currentPanels = {};
-      }
       const newId = 'p_' + Date.now().toString(36);
       const count = Object.keys(currentPanels).length + 1;
       currentPanels[newId] = createDefaultPanel(newId, `لوحة دعم جديدة #${count}`);
@@ -3438,7 +3216,6 @@ main,section { scroll-margin-top:84px; }
       loadSelectedPanelIntoUI();
       showToast('تم إنشاء بانل جديد! قم بتعديل إعداداته ونشره.', 'success');
     }
-    window.createNewPanel = createNewPanel;
 
     function deleteCurrentPanel() {
       if (Object.keys(currentPanels).length <= 1) {
@@ -4140,8 +3917,8 @@ main,section { scroll-margin-top:84px; }
     }
 
     // Custom Embeds State & Helper Functions
-    function createDefaultCustomEmbed() {
-      return {
+    let currentCustomEmbeds = {
+      'emb_default': {
         id: 'emb_default',
         name: 'إيمبد القوانين والترحيب',
         type: 'v2',
@@ -4151,13 +3928,9 @@ main,section { scroll-margin-top:84px; }
         img: '',
         footer: 'NTL Server System • 2026',
         buttons: [
-          { label: 'استلام رتبة العضوية', style: 'Success', emoji: '⭐', action: 'give_role', roleId: '', replyMessage: 'تم منحك الرتبة بنجاح!' }
+          { label: 'استلام رتبة العضوية', style: 'Success', emoji: '⭐', action: 'give_role', roleId: '', replyMessage: '' }
         ]
-      };
-    }
-
-    let currentCustomEmbeds = {
-      'emb_default': createDefaultCustomEmbed()
+      }
     };
     let selectedCustomEmbedId = 'emb_default';
     let currentGuildRoles = [];
@@ -4165,13 +3938,6 @@ main,section { scroll-margin-top:84px; }
     function renderCustomEmbedDropdown() {
       const select = document.getElementById('embed-select-list');
       if (!select) return;
-      if (!currentCustomEmbeds || typeof currentCustomEmbeds !== 'object' || Array.isArray(currentCustomEmbeds) || Object.keys(currentCustomEmbeds).length === 0) {
-        currentCustomEmbeds = { 'emb_default': createDefaultCustomEmbed() };
-        selectedCustomEmbedId = 'emb_default';
-      }
-      if (!currentCustomEmbeds[selectedCustomEmbedId]) {
-        selectedCustomEmbedId = Object.keys(currentCustomEmbeds)[0];
-      }
       select.innerHTML = '';
       Object.keys(currentCustomEmbeds).forEach(id => {
         const emb = currentCustomEmbeds[id];
@@ -4185,27 +3951,22 @@ main,section { scroll-margin-top:84px; }
     }
 
     function createNewCustomEmbed() {
-      if (!currentCustomEmbeds || typeof currentCustomEmbeds !== 'object' || Array.isArray(currentCustomEmbeds)) {
-        currentCustomEmbeds = {};
-      }
-      const count = Object.keys(currentCustomEmbeds).length + 1;
       const newId = 'emb_' + Date.now();
       currentCustomEmbeds[newId] = {
         id: newId,
-        name: `إيمبد مخصص جديد #${count}`,
+        name: 'إيمبد مخصص جديد',
         type: 'v2',
-        title: `عنوان الإيمبد الجديد #${count}`,
-        desc: 'محتوى الإيمبد التفاعلي...',
+        title: 'عنوان الإيمبد الجديد',
+        desc: 'محتوى الإيمبد...',
         color: '#5865f2',
         img: '',
-        footer: 'NTL Server System • 2026',
+        footer: '',
         buttons: []
       };
       selectedCustomEmbedId = newId;
       renderCustomEmbedDropdown();
       showToast('تم إضافة إيمبد جديد، قم بتخصيصه وتعبئة بياناته', 'success');
     }
-    window.createNewCustomEmbed = createNewCustomEmbed;
 
     function deleteCurrentCustomEmbed() {
       if (Object.keys(currentCustomEmbeds).length <= 1) {
@@ -4971,11 +4732,29 @@ main,section { scroll-margin-top:84px; }
     // ==========================================
     // STICKY AUTO PANELS JAVASCRIPT ENGINE
     // ==========================================
-    function createDefaultStickyPanelsList() {
-      return [
-        {
+    let currentStickyPanels = [
+      {
+        id: 'spanel-1',
+        name: 'بانل روم الشات العام',
+        channelId: '',
+        title: '📌 تنبيه وقوانين الروم',
+        content: 'مرحباً بكم في الروم! يرجى الالتزام بالاحترام المتبادل وعدم السبام 💖\n\n• يتجدد هذا البانل تلقائياً في الأسفل مع كل رسالة جديدة.',
+        enabled: true,
+        embed: true,
+        color: '#5865f2',
+        imageUrl: '',
+        footer: 'NTL Protection & Auto-Panel System'
+      }
+    ];
+    let selectedStickyPanelId = 'spanel-1';
+
+    function renderStickyPanelsSelector() {
+      const container = document.getElementById('sticky-panels-selector-container');
+      if (!container) return;
+      if (!currentStickyPanels || currentStickyPanels.length === 0) {
+        currentStickyPanels = [{
           id: 'spanel-1',
-          name: 'بانل روم الشات العام',
+          name: 'بانل روم تلقائي #1',
           channelId: '',
           title: '📌 تنبيه وقوانين الروم',
           content: 'مرحباً بكم في الروم! يرجى الالتزام بالاحترام المتبادل وعدم السبام 💖\n\n• يتجدد هذا البانل تلقائياً في الأسفل مع كل رسالة جديدة.',
@@ -4984,18 +4763,7 @@ main,section { scroll-margin-top:84px; }
           color: '#5865f2',
           imageUrl: '',
           footer: 'NTL Protection & Auto-Panel System'
-        }
-      ];
-    }
-
-    let currentStickyPanels = createDefaultStickyPanelsList();
-    let selectedStickyPanelId = 'spanel-1';
-
-    function renderStickyPanelsSelector() {
-      const container = document.getElementById('sticky-panels-selector-container');
-      if (!container) return;
-      if (!Array.isArray(currentStickyPanels) || currentStickyPanels.length === 0) {
-        currentStickyPanels = createDefaultStickyPanelsList();
+        }];
         selectedStickyPanelId = 'spanel-1';
       }
 
@@ -5029,14 +4797,12 @@ main,section { scroll-margin-top:84px; }
     }
 
     function addStickyPanel() {
-      if (!Array.isArray(currentStickyPanels)) currentStickyPanels = [];
       updateStickyPanelFromUI();
       const newId = 'spanel-' + Date.now();
-      const defaultChannel = (guildChannelsCache && guildChannelsCache[0]) ? guildChannelsCache[0].id : '';
       const newPanel = {
         id: newId,
         name: `بانل روم تلقائي #${currentStickyPanels.length + 1}`,
-        channelId: defaultChannel,
+        channelId: (guildChannelsCache && guildChannelsCache[0]) ? guildChannelsCache[0].id : '',
         title: '📌 تنبيه وقوانين الروم',
         content: 'مرحباً بكم في الروم! يرجى الالتزام بالاحترام المتبادل وعدم السبام 💖\n\n• يتجدد هذا البانل تلقائياً في الأسفل مع كل رسالة جديدة.',
         enabled: true,
@@ -5048,14 +4814,11 @@ main,section { scroll-margin-top:84px; }
       currentStickyPanels.push(newPanel);
       selectedStickyPanelId = newId;
       renderStickyPanelsSelector();
-      renderStickyPanelForm();
-      showToast('تم إنشاء وإضافة بانل تلقائي جديد بنجاح!', 'success');
+      showToast('تم إضافة بانل تلقائي جديد، يمكنك تخصيصه وتفعيله بالروم!', 'success');
     }
-    window.addStickyPanel = addStickyPanel;
-    window.createNewStickyPanel = addStickyPanel;
 
     function deleteCurrentStickyPanel() {
-      if (!Array.isArray(currentStickyPanels) || currentStickyPanels.length <= 1) {
+      if (currentStickyPanels.length <= 1) {
         showToast('يجب الاحتفاظ ببانل تلقائي واحد على الأقل', 'error');
         return;
       }
@@ -6029,14 +5792,6 @@ main,section { scroll-margin-top:84px; }
       if (currentGlobalLang !== 'ar') setGlobalLanguage(currentGlobalLang);
       checkUserSession();
       initScrollAnimations();
-      try {
-        if (typeof renderPanelsSelector === 'function') renderPanelsSelector();
-        if (typeof loadSelectedPanelIntoUI === 'function') loadSelectedPanelIntoUI();
-        if (typeof renderCustomEmbedDropdown === 'function') renderCustomEmbedDropdown();
-        if (typeof renderStickyPanelsSelector === 'function') renderStickyPanelsSelector();
-      } catch (err) {
-        console.warn('Initial submodules render notice:', err);
-      }
     });
   </script>
 

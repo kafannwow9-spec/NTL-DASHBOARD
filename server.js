@@ -551,15 +551,12 @@ function verifyGuildAdmin(req, res, next) {
     return next();
   }
 
-  // Session user verification (supports both Express session and HMAC signed cookie/header token)
-  const signedSession = getExpressSignedSession(req);
-  const activeUser = (req.session && req.session.user) ? req.session.user : signedSession?.user;
-  const activeGuilds = (req.session && req.session.userGuilds) ? req.session.userGuilds : (signedSession?.adminGuilds || []);
-
-  if (activeUser) {
+  // Session user verification
+  if (req.session && req.session.user) {
     const targetGuildId = req.params.guildId || req.body?.guildId;
     if (targetGuildId) {
-      const targetGuild = activeGuilds.find(g => String(g.id) === String(targetGuildId));
+      const userGuilds = req.session.userGuilds || [];
+      const targetGuild = userGuilds.find(g => String(g.id) === String(targetGuildId));
       if (targetGuild) {
         return next();
       }
@@ -1171,10 +1168,10 @@ app.get('/api/guild-settings/:guildId', verifyGuildAdmin, async (req, res) => {
     members: guildMembers,
     emojis: guildEmojis,
     settings: {
-      panels: (localData.panels && typeof localData.panels === 'object') ? localData.panels : {},
-      stickyPanels: Array.isArray(localData.stickyPanels) ? localData.stickyPanels : (localData.stickyPanels && typeof localData.stickyPanels === 'object' ? Object.values(localData.stickyPanels) : []),
-      customEmbeds: (localData.customEmbeds && typeof localData.customEmbeds === 'object') ? localData.customEmbeds : {},
-      autoResponses: Array.isArray(localData.autoResponses) ? localData.autoResponses : [],
+      panels: localData.panels || {},
+      stickyPanels: localData.stickyPanels || [],
+      customEmbeds: localData.customEmbeds || {},
+      autoResponses: localData.autoResponses || [],
       suggestions: localData.suggestions || {},
       azkar: localData.azkar || {},
       moderation: localData.moderation || null,
