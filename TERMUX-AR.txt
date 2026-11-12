@@ -1,0 +1,10 @@
+التشغيل على Termux
+==================
+pkg update -y && pkg install -y nodejs unzip
+unzip NTL-DASHBOARD-glass.zip -d ntl && cd ntl/NTL-DASHBOARD-main
+npm install
+node index.js        # يشغّل البوت + الداشبورد معًا (المنفذ 25147 افتراضيًا)
+
+- لا حاجة لـ npm run build؛ السيرفر يقدّم index.html و manage.html مباشرة.
+- ملف التصميم الجديد: assets/glass.css (غيّر الألوان من أعلى الملف).
+- ضع التوكنات والأسرار في ملف .env أو config كما في مشروعك الأصلي.
