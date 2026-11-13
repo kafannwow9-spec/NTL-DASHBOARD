@@ -1,7 +1,7 @@
 const enc = new TextEncoder();
 const CHUNK_SIZE = 3200;
 const MAX_CHUNKS = 8;
-const SESSION_MAX_AGE = 604800; // 7 days
+const SESSION_MAX_AGE = 86400; // 24 ساعة
 
 function toBase64Url(bytes) {
   let binary = '';
@@ -48,16 +48,12 @@ async function verifySignature(value, sig, secret) {
 }
 
 async function isValidOAuthState(state, cookieState, secret) {
-  if (!state) return false;
-  if (cookieState && state === cookieState) return true;
+  if (!state || !cookieState || state !== cookieState) return false;
   const parts = state.split('.');
   if (parts.length !== 3) return false;
-  const [tsStr, nonce, sig] = parts;
-  const ts = Number(tsStr);
-  if (!Number.isFinite(ts) || !nonce || !sig) return false;
-  const now = Math.floor(Date.now() / 1000);
-  if (Math.abs(now - ts) > 900) return false;
-  return await verifySignature(`${tsStr}.${nonce}`, sig, secret);
+  const ts = Number(parts[0]);
+  if (!Number.isFinite(ts) || Math.abs(Math.floor(Date.now() / 1000) - ts) > 900) return false;
+  return await verifySignature(`${parts[0]}.${parts[1]}`, parts[2], secret);
 }
 
 function parseCookies(request) {
@@ -140,7 +136,7 @@ export async function onRequest({ request, env }) {
         'Content-Type': 'application/x-www-form-urlencoded'
       },
       body: new URLSearchParams({
-        client_id: env.DISCORD_CLIENT_ID || '1405179057628254259',
+        client_id: env.DISCORD_CLIENT_ID,
         client_secret: env.DISCORD_CLIENT_SECRET,
         grant_type: 'authorization_code',
         code,
@@ -243,27 +239,13 @@ export async function onRequest({ request, env }) {
     <div class="spin"></div>
     <p style="font-size:14px;color:#cbd5e1;margin:0">تم تسجيل الدخول بنجاح، جاري فتح لوحة التحكم...</p>
   </div>
-  <script>
-    (function() {
-      var signed = ${JSON.stringify(signedToken)};
-      try { sessionStorage.setItem('ntl_signed_session', signed); } catch (e) {}
-      try { localStorage.setItem('ntl_signed_session', signed); } catch (e) {}
-      if (window.opener && !window.opener.closed) {
-        try {
-          window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS', sessionToken: signed }, '*');
-          window.close();
-          return;
-        } catch (e) {}
-      }
-      window.location.replace('/');
-    })();
-  </script>
+  <script>setTimeout(function(){ location.replace('/'); }, 300);</script>
 </body>
 </html>`;
 
     return new Response(html, { status: 200, headers: outHeaders });
   } catch (e) {
-    return new Response(`تعذر تسجيل الدخول عبر Discord: ${e.message}`, {
+    return new Response('تعذر تسجيل الدخول عبر Discord. أعد المحاولة.', {
       status: 401,
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',

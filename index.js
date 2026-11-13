@@ -2985,7 +2985,7 @@ async function uploadToImgBB(imageUrl) {
         return imageUrl;
     }
 
-    const apiKey = process.env.IMGBB_KEY || 'E664c19272197ad9ccedf89cb063a601';
+    const apiKey = process.env.IMGBB_KEY || '';
 
     try {
         console.log(`[ImgBB]: Downloading image from: ${imageUrl}`);

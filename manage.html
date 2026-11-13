@@ -8,8 +8,8 @@
   <meta property="og:title" content="NTL Dashboard — Discord Bot Dashboard">
   <meta property="og:description" content="لوحة التحكم الرسمية الشاملة لبوت ديسكورد NTL لإدارة السيرفرات، الإيمبدات، التذاكر، وأنظمة الحماية.">
   <meta property="og:site_name" content="NTL Dashboard">
-  <meta property="og:image" content="/assets/bot_avatar.png">
-  <link rel="icon" type="image/png" href="/assets/bot_avatar.png">
+  <meta property="og:image" content="/assets/ntl-logo.png">
+  <link rel="icon" type="image/png" href="/assets/ntl-logo.png">
 
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -190,7 +190,7 @@
     <header class="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-6 pt-6">
       <nav class="glass-panel rounded-2xl px-5 py-3.5 flex items-center justify-between">
         <div class="flex items-center gap-3">
-          <img src="/assets/bot_avatar.png" onerror="this.src='/public/assets/bot_avatar.png'" alt="NTL Bot" class="w-10 h-10 rounded-xl object-contain ring-1 ring-white/10 shadow-lg">
+          <img src="/assets/ntl-logo.png" onerror="this.src='/public/assets/ntl-logo.png'" alt="NTL Bot" class="w-10 h-10 rounded-xl object-contain ring-1 ring-white/10 shadow-lg">
           <div>
             <h1 class="text-base font-extrabold text-white tracking-wide">NTL Dashboard</h1>
             <p class="text-[11px] text-white/40">لوحة التحكم الرسمية لبوت ديسكورد</p>
@@ -269,7 +269,7 @@
     <!-- Mobile Header -->
     <div class="lg:hidden flex items-center justify-between p-4 border-b border-white/10 glass-panel sticky top-0 z-30">
       <div class="flex items-center gap-2.5">
-        <img src="/assets/bot_avatar.png" onerror="this.src='/public/assets/bot_avatar.png'" alt="NTL Bot" class="w-8 h-8 rounded-lg object-contain">
+        <img src="/assets/ntl-logo.png" onerror="this.src='/public/assets/ntl-logo.png'" alt="NTL Bot" class="w-8 h-8 rounded-lg object-contain">
         <span class="font-extrabold text-sm text-white">NTL Control</span>
       </div>
       <button onclick="toggleMobileSidebar(true)" class="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-white cursor-pointer" title="فتح القائمة">
@@ -286,7 +286,7 @@
       <!-- Top Branding with Mobile Close Button -->
       <div class="flex items-center justify-between pb-4 border-b border-white/10 mb-4">
         <div class="flex items-center gap-3">
-          <img src="/assets/bot_avatar.png" onerror="this.src='/public/assets/bot_avatar.png'" alt="NTL Bot" class="w-10 h-10 rounded-xl object-contain ring-1 ring-white/15">
+          <img src="/assets/ntl-logo.png" onerror="this.src='/public/assets/ntl-logo.png'" alt="NTL Bot" class="w-10 h-10 rounded-xl object-contain ring-1 ring-white/15">
           <div>
             <h2 class="text-sm font-black text-white">NTL Dashboard</h2>
             <p class="text-[10px] text-white/40">إدارة ميزات وخيارات السيرفر</p>
@@ -336,6 +336,22 @@
             <span>لوحات التذاكر (Tickets)</span>
           </button>
 
+          <button onclick="switchTab('Ratings')" id="nav-btn-Ratings" class="nav-btn">
+            <i data-lucide="star" class="w-4 h-4 text-amber-400"></i>
+            <span>تقييم التذاكر</span>
+          </button>
+
+          <button onclick="switchTab('Reviews')" id="nav-btn-Reviews" class="nav-btn">
+            <i data-lucide="message-square-heart" class="w-4 h-4 text-pink-400"></i>
+            <span>تقييمات الخدمة (Reviews)</span>
+          </button>
+
+          <button onclick="switchTab('Reports')" id="nav-btn-Reports" class="nav-btn">
+            <i data-lucide="siren" class="w-4 h-4 text-rose-400"></i>
+            <span>البلاغات (Reports)</span>
+          </button>
+
+
           <button onclick="switchTab('StickyPanels')" id="nav-btn-StickyPanels" class="nav-btn">
             <i data-lucide="layers" class="w-4 h-4 text-indigo-400"></i>
             <span>البانلات التلقائية (Sticky)</span>
@@ -364,11 +380,6 @@
           <button onclick="switchTab('Protection')" id="nav-btn-Protection" class="nav-btn">
             <i data-lucide="shield" class="w-4 h-4 text-red-400"></i>
             <span>الحماية والأمان (Guard)</span>
-          </button>
-
-          <button onclick="switchTab('Azkar')" id="nav-btn-Azkar" class="nav-btn">
-            <i data-lucide="book-open" class="w-4 h-4 text-emerald-400"></i>
-            <span>الأذكار والقرآن</span>
           </button>
 
           <button onclick="switchTab('Responses')" id="nav-btn-Responses" class="nav-btn">
@@ -879,56 +890,24 @@
         </div>
 
         <!-- Module Editor: Azkar -->
-        <div id="mod-azkar" class="module-tab hidden hidden space-y-6 text-right">
-          <div class="flex justify-between items-center border-b border-white/10 pb-4">
-            <div>
-              <h3 class="font-extrabold text-lg text-white flex items-center gap-2">
-                <i data-lucide="book-open" class="w-5 h-5 text-emerald-400"></i>
-                <span>إعدادات وتسطيب نظام الأذكار</span>
-              </h3>
-              <p class="text-xs text-slate-400">تشغيل/إطفاء واختيار الروم وفترة التكرار لإرسال الأذكار التلقائية</p>
-            </div>
-            <div class="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-xl border border-white/10">
-              <span class="text-xs font-bold text-slate-300">حالة النظام:</span>
-              <label class="relative inline-flex items-center cursor-pointer">
-                <input id="azk-enabled" type="checkbox" checked class="sr-only peer">
-                <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
-              </label>
-            </div>
-          </div>
+        
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label class="block text-xs font-bold text-slate-300 mb-1.5">روم الأذكار والآيات:</label>
-              <select id="azk-channelId" class="w-full bg-[rgba(0,0,0,0.2)] border border-white/10 rounded-xl p-3 text-sm text-slate-200 dir-rtl">
-                <option value="azkar"># أذكار-وآيات</option>
-              </select>
-            </div>
-            <div>
-              <label class="block text-xs font-bold text-slate-300 mb-1.5">الفترة الزمنية للإرسال الدوري:</label>
-              <select id="azk-interval" class="w-full bg-[rgba(0,0,0,0.2)] border border-white/10 rounded-xl p-3 text-sm text-slate-200">
-                <option value="15">كل 15 دقيقة</option>
-                <option value="30" selected>كل 30 دقيقة</option>
-                <option value="60">كل ساعة</option>
-                <option value="120">كل ساعتين</option>
-                <option value="240">كل 4 ساعات</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="flex flex-col sm:flex-row gap-3 pt-2">
-            <button onclick="saveAllGuildSettings('azkar')" class="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-emerald-600/20 transition cursor-pointer flex items-center justify-center gap-2">
-              <i data-lucide="check-circle" class="w-4 h-4"></i>
-              <span>تسطيب ونشر الأذكار التلقائية</span>
-            </button>
-            <button onclick="triggerInstantAzkar()" class="w-full py-3.5 bg-[rgba(255,255,255,0.02)] hover:bg-[#21262d] text-zinc-300 border border-[#1a1a1a] font-extrabold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-2">
-              <i data-lucide="sparkles" class="w-4 h-4 text-zinc-400"></i>
-              <span>إرسال ذكر فوري الآن بالروم</span>
-            </button>
-          </div>
+                <div id="mod-ratings" class="module-tab hidden space-y-6 text-right">
+          <div class="ntl-page-head"><div class="ntl-page-ico"><i data-lucide="star" class="w-5 h-5"></i></div><div><h2>تقييم التذاكر</h2><p>تحكم بتقييم الأعضاء لتذاكرهم وشاهد النتائج</p></div></div>
+          <div id="ratings-root" class="space-y-4"></div>
         </div>
 
-        <!-- Module Editor: Suggestions -->
+        <div id="mod-reviews" class="module-tab hidden space-y-6 text-right">
+          <div class="ntl-page-head"><div class="ntl-page-ico"><i data-lucide="message-square-heart" class="w-5 h-5"></i></div><div><h2>تقييمات الخدمة</h2><p>لوحة Service evaluation: النشر، إعادة التقييم، وإدارة التقييمات</p></div></div>
+          <div id="reviews-root" class="space-y-4"></div>
+        </div>
+
+        <div id="mod-reports" class="module-tab hidden space-y-6 text-right">
+          <div class="ntl-page-head"><div class="ntl-page-ico"><i data-lucide="siren" class="w-5 h-5"></i></div><div><h2>نظام البلاغات</h2><p>لوحة البلاغات، روم الاستلام، القبول والرفض، وسجل البلاغات</p></div></div>
+          <div id="reports-root" class="space-y-4"></div>
+        </div>
+
+<!-- Module Editor: Suggestions -->
         <div id="mod-suggestions" class="module-tab hidden hidden space-y-6 text-right">
           <div class="flex justify-between items-center border-b border-white/10 pb-4">
             <div>
@@ -1709,14 +1688,7 @@
     let isSavingSettings = false;
     let activeTargetField = null;
 
-    function getSignedSessionHeader() {
-      try {
-        const signed = sessionStorage.getItem('ntl_signed_session') || localStorage.getItem('ntl_signed_session') || '';
-        return signed ? { 'X-NTL-Session': signed } : {};
-      } catch (e) {
-        return {};
-      }
-    }
+    function getSignedSessionHeader() { return {}; }
 
     // Helper: Toast Notifications
     function showToast(msg, type = 'info') {
@@ -1762,6 +1734,10 @@
 
     // API fetch wrapper
     async function apiFetch(url, options = {}) {
+      if (/\/api\/save-guild-settings\//.test(url) && !window.guildDataLoaded) {
+        showToast('لم يتم تحميل بيانات السيرفر بعد — لن يتم الحفظ لحماية إعداداتك الحالية.', 'error');
+        return new Response(JSON.stringify({ success: false }), { status: 409 });
+      }
       const headers = Object.assign({
         'Content-Type': 'application/json',
         ...getSignedSessionHeader()
@@ -1785,8 +1761,6 @@
     window.addEventListener('message', (event) => {
       if (event.data && (event.data.type === 'OAUTH_AUTH_SUCCESS' || event.data.type === 'DISCORD_AUTH_SUCCESS')) {
         if (event.data.sessionToken) {
-          try { sessionStorage.setItem('ntl_signed_session', event.data.sessionToken); } catch (e) {}
-          try { localStorage.setItem('ntl_signed_session', event.data.sessionToken); } catch (e) {}
         }
         loadInitialData();
       }
@@ -1954,6 +1928,7 @@
       const guild = currentGuilds.find(g => String(g.id) === String(guildId));
       selectedGuild = guild || { id: guildId, name: name || 'السيرفر', icon: icon };
       selectedGuildId = String(guildId);
+      window.guildDataLoaded = false;
 
       const sidebarName = document.getElementById('sidebar-server-name');
       const sidebarIcon = document.getElementById('sidebar-server-icon');
@@ -1967,7 +1942,11 @@
 
       try {
         const res = await apiFetch(`/api/guild-settings/${guildId}`);
-        if (res.ok) {
+        if (!res.ok) {
+          window.guildDataLoaded = false;
+          if (sidebarStatus) sidebarStatus.textContent = 'تعذر تحميل بيانات السيرفر';
+          showToast(res.status === 403 ? 'لا تملك صلاحية إدارة هذا السيرفر.' : (res.status === 404 ? 'البوت غير موجود في هذا السيرفر.' : 'تعذر تحميل بيانات السيرفر. أعد المحاولة.'), 'error');
+        } else {
           const data = await res.json();
           const channels = data.channels || [];
           const categories = data.categories || [];
@@ -1979,7 +1958,7 @@
 
           // Populate Channel Dropdowns in all modules
           const chOptions = `<option value="">-- اختر القناة --</option>` + channels.map(c => `<option value="${c.id}"># ${escapeHtml(c.name)}</option>`).join('');
-          ['ticket-channelId', 'welcome-channelId', 'script-channelId', 'key-channelId', 'azk-channelId', 'sug-channelId', 'prot-logChannel', 'emb-channelId', 'sticky-channelId'].forEach(id => {
+          ['ticket-channelId', 'welcome-channelId', 'script-channelId', 'key-channelId', 'sug-channelId', 'prot-logChannel', 'emb-channelId', 'sticky-channelId'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.innerHTML = chOptions;
           });
@@ -1998,66 +1977,40 @@
             addRoleSelectEl.innerHTML = `<option value="">-- اختر رتبة لإضافتها لطاقم الدعم --</option>` + roles.map(r => `<option value="${r.id}">${escapeHtml(r.name)}</option>`).join('');
           }
 
-          // Load Module Settings
-          if (data.settings) {
-            const s = data.settings;
-            if (s.panels) currentPanels = s.panels;
-            if (s.customEmbeds) currentCustomEmbeds = s.customEmbeds;
-            if (s.stickyPanels) currentStickyPanels = s.stickyPanels;
-            if (s.autoResponses) currentAutoResponses = s.autoResponses;
-
-            // Protection
-            if (s.protection) {
-              const p = s.protection;
-              if (document.getElementById('prot-bot')) document.getElementById('prot-bot').checked = p.antiBot !== false;
-              if (document.getElementById('prot-channels')) document.getElementById('prot-channels').checked = p.antiChannelRaid !== false;
-              if (document.getElementById('prot-spam')) document.getElementById('prot-spam').checked = p.antiSpam !== false;
-              if (document.getElementById('prot-links')) document.getElementById('prot-links').checked = p.antiLinks !== false;
-              if (p.logChannel && document.getElementById('prot-logChannel')) document.getElementById('prot-logChannel').value = p.logChannel;
-            }
-
-            // Keys
-            const dk = s.deltaKeys || s.deltaKey;
-            if (dk) {
-              if (document.getElementById('key-enabled')) document.getElementById('key-enabled').checked = dk.enabled !== false;
-              if (dk.channelId && document.getElementById('key-channelId')) document.getElementById('key-channelId').value = dk.channelId;
-              if (dk.method && document.getElementById('key-method')) document.getElementById('key-method').value = dk.method;
-            }
-
-            // Suggestions
-            if (s.suggestions) {
-              const sug = s.suggestions;
-              if (document.getElementById('sug-enabled')) document.getElementById('sug-enabled').checked = sug.enabled !== false;
-              if (sug.channelId && document.getElementById('sug-channelId')) document.getElementById('sug-channelId').value = sug.channelId;
-              if (sug.title && document.getElementById('sug-title')) document.getElementById('sug-title').value = sug.title;
-              if (sug.description && document.getElementById('sug-description')) document.getElementById('sug-description').value = sug.description;
-            }
-
-            // Azkar
-            if (s.azkar) {
-              const azk = s.azkar;
-              if (document.getElementById('azk-enabled')) document.getElementById('azk-enabled').checked = azk.enabled !== false;
-              if (azk.channelId && document.getElementById('azk-channelId')) document.getElementById('azk-channelId').value = azk.channelId;
-              if (azk.interval && document.getElementById('azk-interval')) document.getElementById('azk-interval').value = azk.interval;
-            }
-
-            // Welcome
-            if (s.welcome) {
-              loadWelcomeSettingsIntoUI(s.welcome);
-            }
-          }
-
-          // Re-render submodules
-          renderPanelsSelector();
-          loadSelectedPanelIntoUI();
-          renderCustomEmbedDropdown();
-          if (Object.keys(currentCustomEmbeds).length > 0) {
-            loadCustomEmbedToForm(Object.keys(currentCustomEmbeds)[0]);
-          }
-          renderStickyPanelsSelector();
+          // تحميل الإعدادات: كل قسم معزول بـ try/catch، واللوحات/الإيمبدات أولاً حتى تظهر المحفوظة دائماً
+          window.ntlGuildData = data;
+          currentGuildRoles = roles;
+          const s = data.settings || {};
+          const safe = (label, fn) => { try { fn(); } catch (e) { console.warn('load section failed:', label, e); } };
+          const $v = (id, v) => { const el = document.getElementById(id); if (el && v !== undefined && v !== null) el.value = v; };
+          const $c = (id, v) => { const el = document.getElementById(id); if (el) el.checked = v; };
+          safe('panels', () => { currentPanels = ntlNormalizePanels(s.panels || {}); renderPanelsSelector(); loadSelectedPanelIntoUI(); });
+          safe('embeds', () => {
+            currentCustomEmbeds = (s.customEmbeds && Object.keys(s.customEmbeds).length) ? s.customEmbeds : JSON.parse(window.__ntlDefaultEmbeds);
+            selectedCustomEmbedId = Object.keys(currentCustomEmbeds)[0];
+            renderCustomEmbedDropdown();
+          });
+          safe('sticky', () => { currentStickyPanels = Array.isArray(s.stickyPanels) ? s.stickyPanels : []; renderStickyPanelsSelector(); });
+          safe('responses', () => { currentAutoResponses = Array.isArray(s.autoResponses) ? s.autoResponses : []; });
+          safe('protection', () => {
+            const p = s.protection || {};
+            $c('prot-bot', p.antiBot !== false); $c('prot-channels', p.antiChannelRaid !== false); $c('prot-spam', p.antiSpam !== false);
+            $c('prot-links', p.antiLinks !== false); $c('prot-permissions', p.antiPermissions !== false); $c('prot-roles', p.antiRoles !== false);
+            $v('prot-bot-punish', p.botPunishment); $v('prot-channels-punish', p.channelPunishment); $v('prot-spam-punish', p.spamPunishment);
+            $v('prot-links-punish', p.linkPunishment); $v('prot-permissions-punish', p.permissionPunishment); $v('prot-roles-punish', p.rolePunishment);
+            $v('prot-logChannel', p.logChannel || '');
+          });
+          safe('keys', () => { const dk = s.deltaKeys || s.deltaKey || {}; $c('key-enabled', dk.enabled !== false); $v('key-channelId', dk.channelId || ''); $v('key-method', dk.method); });
+          safe('scripts', () => { const sc = s.scriptSystem || {}; $c('script-enabled', sc.enabled !== false); $v('script-channelId', sc.channelId || ''); $v('script-prefix', sc.prefix); });
+          safe('suggestions', () => { const sg = s.suggestions || {}; $c('sug-enabled', sg.enabled !== false); $v('sug-channelId', sg.channelId || ''); $v('sug-title', sg.title); $v('sug-description', sg.description); });
+          safe('welcome', () => { loadWelcomeSettingsIntoUI(s.welcome || null); });
+          window.guildDataLoaded = true;
+          if (window.ntlAfterGuildLoad) safe('extra', () => window.ntlAfterGuildLoad(data));
         }
       } catch(err) {
         console.warn('Error loading guild data:', err.message);
+        window.guildDataLoaded = false;
+        showToast('تعذر تحميل بيانات السيرفر. أعد المحاولة.', 'error');
       }
 
       renderServerStreams();
@@ -2076,7 +2029,9 @@
         'Keys': 'mod-keys',
         'Welcome': 'mod-welcome',
         'Protection': 'mod-protection',
-        'Azkar': 'mod-azkar',
+        'Ratings': 'mod-ratings',
+        'Reviews': 'mod-reviews',
+        'Reports': 'mod-reports',
         'Responses': 'mod-responses',
         'Scripts': 'mod-scripts'
       };
@@ -2091,7 +2046,9 @@
         'Keys': 'نظام تخطي مفاتيح دلتا (Delta Keys)',
         'Welcome': 'نظام الترحيب وبطاقات الأعضاء (Welcome Studio)',
         'Protection': 'الحماية والأمان (Server Guard)',
-        'Azkar': 'الأذكار والقرآن الكريم',
+        'Ratings': 'تقييم التذاكر',
+        'Reviews': 'تقييمات الخدمة (Reviews)',
+        'Reports': 'نظام البلاغات (Reports)',
         'Responses': 'الردود التلقائية (Auto Reply)',
         'Scripts': 'البحث عن السكربتات'
       };
@@ -2116,6 +2073,7 @@
 
       toggleMobileSidebar(false);
       lucide.createIcons();
+      if (window.ntlOnTab) window.ntlOnTab(tabName);
     }
 
     function switchServerTab(moduleName) {
@@ -2127,7 +2085,6 @@
         'keys': 'Keys',
         'welcome': 'Welcome',
         'protection': 'Protection',
-        'azkar': 'Azkar',
         'responses': 'Responses',
         'scripts': 'Scripts'
       };
@@ -2781,73 +2738,12 @@
     }
 
     async function uploadDirectToCdn(dataUrl) {
-      // 1. Try server endpoint first
       try {
-        const res = await apiFetch('/api/upload-image', {
-          method: 'POST',
-          body: JSON.stringify({ image: dataUrl })
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data && data.success && data.url) {
-            let finalUrl = data.url;
-            if (finalUrl.startsWith('/') && !finalUrl.includes('pages.dev')) {
-              finalUrl = window.location.origin + finalUrl;
-            }
-            if (!finalUrl.includes('pages.dev/image-')) {
-              return finalUrl;
-            }
-          }
-        }
-      } catch (err) {
-        console.warn('Backend image upload fallback:', err);
-      }
-
-      // 2. Direct client-side ImgBB upload fallback
-      try {
-        const base64Data = dataUrl.split(',')[1];
-        if (base64Data) {
-          const keys = ['2d8bbf7cf499f57912d0938fc9d01242', 'd20cfbe5ca2501a350ebfb9fa9d1d575', '6d207e02198a847aa5ad3ac50ed46520'];
-          for (const key of keys) {
-            try {
-              const formData = new FormData();
-              formData.append('image', base64Data);
-              const imgbbRes = await fetch(`https://api.imgbb.com/1/upload?key=${key}`, {
-                method: 'POST',
-                body: formData
-              });
-              if (imgbbRes.ok) {
-                const imgbbData = await imgbbRes.json();
-                if (imgbbData?.data?.url) {
-                  return imgbbData.data.url;
-                }
-              }
-            } catch (kErr) {}
-          }
-        }
-      } catch (err) {}
-
-      // 3. Direct client-side Freeimage.host upload fallback
-      try {
-        const base64Data = dataUrl.split(',')[1];
-        if (base64Data) {
-          const formData = new FormData();
-          formData.append('source', base64Data);
-          formData.append('action', 'upload');
-          formData.append('auth_token', '6d207e02198a847aa5ad3ac50ed46520');
-          const fRes = await fetch('https://freeimage.host/api/1/upload', {
-            method: 'POST',
-            body: formData
-          });
-          if (fRes.ok) {
-            const fData = await fRes.json();
-            if (fData?.image?.url) {
-              return fData.image.url;
-            }
-          }
-        }
-      } catch (err) {}
-
+        const res = await apiFetch('/api/upload-image', { method: 'POST', body: JSON.stringify({ image: dataUrl }) });
+        const data = res.ok ? await res.json() : null;
+        if (data && data.success && data.url) return data.url;
+        showToast((data && data.error) || 'تعذر رفع الصورة', 'error');
+      } catch (err) { showToast('تعذر رفع الصورة', 'error'); }
       return dataUrl;
     }
 
@@ -2929,15 +2825,7 @@
 
       const payload = {
         guildId: selectedGuild.id,
-        panels: currentPanels,
-        tickets: currentPanels[selectedPanelId] || {
-          channelId: document.getElementById('ticket-channelId')?.value,
-          categoryId: document.getElementById('ticket-categoryId')?.value,
-          supportRole: document.getElementById('ticket-supportRole')?.value,
-          title: document.getElementById('ticket-title')?.value,
-          description: document.getElementById('ticket-description')?.value,
-          color: document.getElementById('ticket-color')?.value || '#5865f2'
-        },
+        panels: ntlPanelsForSave(),
         scriptSystem: {
           enabled: document.getElementById('script-enabled')?.checked !== false,
           channelId: document.getElementById('script-channelId')?.value || '',
@@ -2963,11 +2851,6 @@
           rolePunishment: document.getElementById('prot-roles-punish')?.value || 'strip',
           logChannel: document.getElementById('prot-logChannel')?.value || ''
         },
-        azkar: {
-          enabled: document.getElementById('azk-enabled')?.checked !== false,
-          channelId: document.getElementById('azk-channelId')?.value,
-          interval: document.getElementById('azk-interval')?.value || '30',
-        },
         suggestions: {
           enabled: document.getElementById('sug-enabled')?.checked !== false,
           channelId: document.getElementById('sug-channelId')?.value,
@@ -2989,10 +2872,10 @@
         if (res.ok) {
           showToast('تم حفظ وتطبيق الإعدادات بالسيرفر بنجاح!', 'success');
         } else {
-          showToast('تم حفظ الإعدادات محلياً وفي السيرفر!', 'success');
+          showToast('فشل الحفظ — لم يتم تطبيق التغييرات. حاول مرة أخرى.', 'error');
         }
       } catch (e) {
-        showToast('تم حفظ وتطبيق الإعدادات بنجاح!', 'success');
+        showToast('تعذر الاتصال بالسيرفر — لم يتم الحفظ.', 'error');
       } finally {
         isSavingSettings = false;
       }
@@ -3020,7 +2903,7 @@
             guildRolesCache = data.roles || [];
             
             const channelOptionsHtml = `<option value="">-- اختر القناة --</option>` + guildChannelsCache.map(c => `<option value="${c.id}"># ${escapeHtml(c.name)}</option>`).join('');
-            ['ticket-channelId', 'script-channelId', 'key-channelId', 'azk-channelId', 'sug-channelId', 'direct-channelId', 'prot-logChannel', 'emb-channelId'].forEach(id => {
+            ['ticket-channelId', 'script-channelId', 'key-channelId', 'sug-channelId', 'direct-channelId', 'prot-logChannel', 'emb-channelId'].forEach(id => {
               const el = document.getElementById(id);
               if (el) el.innerHTML = channelOptionsHtml;
             });
@@ -3061,7 +2944,7 @@
           method: 'POST',
           body: JSON.stringify({
             guildId: selectedGuild.id,
-            panels: currentPanels,
+            panels: ntlPanelsForSave(),
             tickets: panel,
             broadcastMessage: {
               channelId: panel.channelId,
@@ -3091,33 +2974,7 @@
       }
     }
 
-    async function triggerInstantAzkar() {
-      if (!selectedGuild || !selectedGuild.id) {
-        showToast('يرجى اختيار سيرفر أولاً', 'error');
-        return;
-      }
-
-      const channelId = document.getElementById('azk-channelId')?.value;
-
-      showToast('جاري إرسال الذكر الفوري إلى الروم...', 'info');
-
-      try {
-        const res = await apiFetch(`/api/azkar/trigger/${selectedGuild.id}`, {
-          method: 'POST',
-          body: JSON.stringify({ channelId })
-        });
-        const data = await res.json();
-        if (data.success) {
-          showToast(data.message, 'success');
-        } else {
-          showToast(data.error || 'تعذر إرسال الذكر', 'error');
-        }
-      } catch (err) {
-        showToast('تم إرسال الذكر بنجاح!', 'success');
-      }
-    }
-
-    async function publishSuggestionEmbed() {
+        async function publishSuggestionEmbed() {
       if (!selectedGuild || !selectedGuild.id) {
         showToast('يرجى اختيار سيرفر أولاً', 'error');
         return;
@@ -3158,10 +3015,10 @@
           const data = await res.json();
           showToast(data.message || 'تم نشر إيمبد الاقتراحات بنجاح مع زر تقديم اقتراح!', 'success');
         } else {
-          showToast('تم نشر إيمبد الاقتراحات بالروم مع الزر!', 'success');
+          showToast('فشل الحفظ — لم يتم تطبيق التغييرات. حاول مرة أخرى.', 'error');
         }
       } catch (err) {
-        showToast('تم نشر إيمبد الاقتراحات بنجاح!', 'success');
+        showToast('تعذر الاتصال بالسيرفر — لم يتم الحفظ.', 'error');
       }
     }
 
@@ -3794,10 +3651,10 @@
         if (res.ok) {
           showToast('تم حفظ الإيمبد المخصص بنجاح بالسيرفر!', 'success');
         } else {
-          showToast('تم حفظ الإيمبد المخصص محلياً وببالسيرفر!', 'success');
+          showToast('فشل الحفظ — لم يتم تطبيق التغييرات. حاول مرة أخرى.', 'error');
         }
       } catch (e) {
-        showToast('تم حفظ الإيمبد المخصص بنجاح!', 'success');
+        showToast('تعذر الاتصال بالسيرفر — لم يتم الحفظ.', 'error');
       }
     }
 
@@ -4012,10 +3869,10 @@
         if (res.ok) {
           showToast('تم حفظ وتفعيل الردود التلقائية بنجاح!', 'success');
         } else {
-          showToast('تم حفظ الردود التلقائية محلياً وفي البوت!', 'success');
+          showToast('فشل الحفظ — لم يتم تطبيق التغييرات. حاول مرة أخرى.', 'error');
         }
       } catch (e) {
-        showToast('تم حفظ الردود التلقائية بنجاح!', 'success');
+        showToast('تعذر الاتصال بالسيرفر — لم يتم الحفظ.', 'error');
       }
     }
 
@@ -4370,10 +4227,10 @@
           const data = await res.json();
           showToast(data.message || 'تم إرسال وتثبيت البانل بالروم بنجاح!', 'success');
         } else {
-          showToast('تم إرسال البانل بالروم بنجاح!', 'success');
+          showToast('فشل الحفظ — لم يتم تطبيق التغييرات. حاول مرة أخرى.', 'error');
         }
       } catch (err) {
-        showToast('تم إرسال البانل بنجاح!', 'success');
+        showToast('تعذر الاتصال بالسيرفر — لم يتم الحفظ.', 'error');
       }
     }
 
@@ -4397,10 +4254,10 @@
         if (res.ok) {
           showToast('تم حفظ وتفعيل البانلات التلقائية بالسيرفر بنجاح!', 'success');
         } else {
-          showToast('تم حفظ البانلات التلقائية محلياً وفي البوت!', 'success');
+          showToast('فشل الحفظ — لم يتم تطبيق التغييرات. حاول مرة أخرى.', 'error');
         }
       } catch (err) {
-        showToast('تم حفظ البانلات التلقائية بنجاح!', 'success');
+        showToast('تعذر الاتصال بالسيرفر — لم يتم الحفظ.', 'error');
       }
     }
 
@@ -4789,10 +4646,10 @@
         if (res.ok) {
           showToast('تم حفظ وتفعيل إعدادات الترحيب بنجاح!', 'success');
         } else {
-           showToast('تم الحفظ بنجاح!', 'success');
+          showToast('فشل الحفظ — لم يتم تطبيق التغييرات. حاول مرة أخرى.', 'error');
         }
       } catch (err) {
-        showToast('تم الحفظ بنجاح!', 'success');
+        showToast('تعذر الاتصال بالسيرفر — لم يتم الحفظ.', 'error');
       }
     }
 
@@ -4874,5 +4731,7 @@
       }
     });
   </script>
+<script>window.__ntlDefaultEmbeds = JSON.stringify(currentCustomEmbeds);</script>
+<script src="/assets/ntl-extra.js"></script>
 </body>
 </html>

@@ -23,7 +23,7 @@ async function sign(value, secret) {
 export async function onRequest({ request, env }) {
   const reqUrl = new URL(request.url);
   const isSecure = reqUrl.protocol === 'https:';
-  const clientId = env.DISCORD_CLIENT_ID || '1405179057628254259';
+  const clientId = env.DISCORD_CLIENT_ID;
   const redirectUri = env.DISCORD_REDIRECT_URI || `${reqUrl.origin}/auth/callback`;
 
   if (!env.DISCORD_CLIENT_SECRET || !env.NTL_SESSION_SECRET) {

@@ -253,7 +253,7 @@ app.post('/api/upload-image', async (req, res) => {
 
     // 1. Try ImgBB
     try {
-      const apiKey = process.env.IMGBB_KEY || 'E664c19272197ad9ccedf89cb063a601';
+      const apiKey = process.env.IMGBB_KEY || '';
       
       const form = new FormData();
       form.append('image', fs.createReadStream(filePath));
@@ -378,7 +378,7 @@ function getMergedConfig() {
   const CLIENT_ID = fileConfig.CLIENT_ID || process.env.CLIENT_ID || "1405179057628254259";
   const CLIENT_SECRET = fileConfig.CLIENT_SECRET || process.env.CLIENT_SECRET || "";
   const BOT_TOKEN = fileConfig.BOT_TOKEN || process.env.BOT_TOKEN || "";
-  const BOT_SECRET = fileConfig.BOT_SECRET || process.env.BOT_SECRET || "38dj38nr89oq";
+  const BOT_SECRET = fileConfig.BOT_SECRET || process.env.BOT_SECRET || "";
   const BOT_SERVER_URL = fileConfig.BOT_SERVER_URL || process.env.BOT_SERVER_URL || "http://us-lax02.altare.global:25147";
 
   const rawAppUrl = process.env.APP_URL || "";
@@ -426,7 +426,7 @@ async function fetchFromExternalBot(endpointPath, method = 'GET', body = null, r
 
     const cleanPath = endpointPath.startsWith('/') ? endpointPath : '/' + endpointPath;
     const targetUrl = `${baseUrl}${cleanPath}`;
-    const secret = cfg.BOT_SECRET || '38dj38nr89oq';
+    const secret = cfg.BOT_SECRET || '';
 
     const headers = {
       'Authorization': `Bearer ${secret}`,
@@ -496,19 +496,19 @@ function authenticate(req, res, next) {
   const botSecretHeader = req.headers['x-bot-secret'];
   const ntlSecretHeader = req.headers['x-ntl-secret'];
   const cfg = getMergedConfig();
-  const validSecret = cfg.BOT_SECRET || '38dj38nr89oq';
+  const validSecret = cfg.BOT_SECRET || '';
 
   // 1. Check Bearer Token
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.substring(7).trim();
-    if (!validSecret || token === validSecret || token === '38dj38nr89oq' || (cfg.BOT_SECRET && token === cfg.BOT_SECRET)) {
+    if (!validSecret || token === validSecret || token === '' || (cfg.BOT_SECRET && token === cfg.BOT_SECRET)) {
       return next();
     }
   }
 
   // 2. Check X-Bot-Secret or X-NTL-Secret header
-  if ((botSecretHeader && (!validSecret || botSecretHeader === validSecret || botSecretHeader === '38dj38nr89oq' || (cfg.BOT_SECRET && botSecretHeader === cfg.BOT_SECRET))) ||
-      (ntlSecretHeader && (!validSecret || ntlSecretHeader === validSecret || ntlSecretHeader === '38dj38nr89oq' || (cfg.BOT_SECRET && ntlSecretHeader === cfg.BOT_SECRET)))) {
+  if ((botSecretHeader && (!validSecret || botSecretHeader === validSecret || botSecretHeader === '' || (cfg.BOT_SECRET && botSecretHeader === cfg.BOT_SECRET))) ||
+      (ntlSecretHeader && (!validSecret || ntlSecretHeader === validSecret || ntlSecretHeader === '' || (cfg.BOT_SECRET && ntlSecretHeader === cfg.BOT_SECRET)))) {
     return next();
   }
 
@@ -531,19 +531,19 @@ function verifyGuildAdmin(req, res, next) {
   const botSecretHeader = req.headers['x-bot-secret'];
   const ntlSecretHeader = req.headers['x-ntl-secret'];
   const cfg = getMergedConfig();
-  const validSecret = cfg.BOT_SECRET || '38dj38nr89oq';
+  const validSecret = cfg.BOT_SECRET || '';
 
   let authenticatedBySecret = false;
-  if (ntlSecretHeader && (ntlSecretHeader === validSecret || ntlSecretHeader === '38dj38nr89oq')) {
+  if (ntlSecretHeader && (ntlSecretHeader === validSecret || ntlSecretHeader === '')) {
     authenticatedBySecret = true;
   }
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.substring(7).trim();
-    if (token === validSecret || token === '38dj38nr89oq') {
+    if (token === validSecret || token === '') {
       authenticatedBySecret = true;
     }
   }
-  if (botSecretHeader && (botSecretHeader === validSecret || botSecretHeader === '38dj38nr89oq')) {
+  if (botSecretHeader && (botSecretHeader === validSecret || botSecretHeader === '')) {
     authenticatedBySecret = true;
   }
 

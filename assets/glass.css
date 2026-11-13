@@ -71,3 +71,55 @@ button:active:not(:disabled){transform:scale(.96)}
 ::selection{background:var(--theme-glow)}
 ::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(255,255,255,.2);border-radius:9px}::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.34)}
 @media(prefers-reduced-motion:reduce){*,body::before{animation:none!important}}
+
+/* ================= NTL v2 — تحسينات التحكم والمظهر ================= */
+html{scroll-behavior:smooth}
+::-webkit-scrollbar{width:9px;height:9px}::-webkit-scrollbar-thumb{background:rgba(255,255,255,.18);border-radius:9px}::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.3)}
+:focus-visible{outline:2px solid var(--theme-accent-hover);outline-offset:2px;border-radius:10px}
+#dashboard-sidebar nav{scrollbar-width:thin}
+.nav-btn{display:flex;align-items:center;gap:.7rem;width:100%;padding:.62rem .8rem;margin-bottom:.15rem;font-size:.8rem;font-weight:700;color:rgba(255,255,255,.72);text-align:right;cursor:pointer;transition:all .18s}
+.nav-btn:hover{color:#fff;transform:translateX(-2px)}
+.nav-btn.active{color:#fff}
+.nav-btn.active::after{content:"";margin-inline-start:auto;width:6px;height:6px;border-radius:50%;background:var(--a2);box-shadow:0 0 10px var(--a2)}
+main>header{position:sticky;top:12px;margin:12px 16px 0;z-index:30}
+.module-tab{animation:ntl-in .28s ease both}@keyframes ntl-in{from{opacity:0;transform:translateY(8px)}}
+.module-tab h3,.module-tab h2{letter-spacing:-.01em}
+button[onclick^="saveAllGuildSettings"]{background-image:linear-gradient(135deg,var(--theme-accent),var(--a2))!important;box-shadow:0 12px 30px -10px var(--theme-glow)!important}
+@media(max-width:1024px){main>header{margin:8px;top:8px}}
+
+.ntl-page-head{display:flex;align-items:center;gap:.9rem;margin-bottom:.4rem}
+.ntl-page-head h2{font-size:1.25rem;font-weight:900}.ntl-page-head p{font-size:.75rem;color:rgba(255,255,255,.55)}
+.ntl-page-ico{width:44px;height:44px;border-radius:14px;display:grid;place-items:center;background:linear-gradient(135deg,var(--a),var(--a2));box-shadow:0 10px 26px -10px var(--theme-glow)}
+.ntl-card{background:linear-gradient(135deg,var(--g1),var(--g2));border:1px solid var(--line);border-radius:22px;padding:1.2rem;backdrop-filter:blur(22px) saturate(170%);box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 20px 50px -24px rgba(0,0,0,.7)}
+.ntl-h{display:flex;align-items:center;gap:.5rem;font-weight:900;font-size:.95rem;margin-bottom:.5rem}
+.ntl-sub{font-size:.72rem;color:rgba(255,255,255,.5);margin-bottom:.7rem}
+.ntl-label{display:block;font-size:.72rem;font-weight:700;color:rgba(255,255,255,.7);margin:.7rem 0 .3rem}
+.ntl-input{width:100%;padding:.6rem .75rem;font-size:.8rem}
+.ntl-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.75rem}
+.ntl-stat{display:flex;flex-direction:column;gap:.25rem;padding:.9rem 1rem;border-radius:18px;background:rgba(255,255,255,.06);border:1px solid var(--line)}
+.ntl-stat-label{font-size:.68rem;color:rgba(255,255,255,.55)}.ntl-stat b{font-size:1.5rem;font-weight:900}
+.ntl-row{display:flex;align-items:center;gap:.7rem;padding:.7rem .4rem;border-top:1px solid rgba(255,255,255,.08);flex-wrap:wrap}
+.ntl-row:first-of-type{border-top:0}
+.ntl-badge{display:inline-flex;align-items:center;justify-content:center;min-width:46px;padding:.2rem .6rem;border-radius:999px;font-size:.68rem;font-weight:800;border:1px solid var(--line);background:rgba(255,255,255,.08)}
+.ntl-badge.ok{background:rgba(52,211,153,.18);border-color:rgba(52,211,153,.5);color:#6ee7b7}
+.ntl-badge.bad{background:rgba(251,113,133,.18);border-color:rgba(251,113,133,.5);color:#fda4af}
+.ntl-badge.mid{background:rgba(251,191,36,.16);border-color:rgba(251,191,36,.45);color:#fcd34d}
+.ntl-btn{display:inline-flex;align-items:center;gap:.4rem;padding:.55rem .95rem;border-radius:14px;font-size:.74rem;font-weight:800;cursor:pointer;border:1px solid var(--line);color:#fff;background:rgba(255,255,255,.08)}
+.ntl-btn.primary{background:linear-gradient(135deg,var(--theme-accent),var(--a));border-color:rgba(255,255,255,.3)}
+.ntl-btn.success{background:linear-gradient(135deg,#059669,#10b981);border-color:rgba(255,255,255,.3)}
+.ntl-btn.danger{background:rgba(225,29,72,.25);border-color:rgba(251,113,133,.5);color:#fecdd3}
+.ntl-icon-btn{padding:.45rem;border-radius:11px;color:rgba(255,255,255,.55);cursor:pointer}.ntl-icon-btn:hover{color:#fda4af;background:rgba(255,255,255,.08)}
+.ntl-switch{display:inline-flex;align-items:center;gap:.5rem;font-size:.75rem;font-weight:700;cursor:pointer}
+.ntl-switch input{position:absolute;opacity:0;pointer-events:none}
+.ntl-switch i{width:38px;height:22px;border-radius:99px;background:rgba(255,255,255,.18);position:relative;transition:.2s;flex:none}
+.ntl-switch i::after{content:"";position:absolute;top:3px;inset-inline-start:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:.2s}
+.ntl-switch input:checked+i{background:var(--theme-accent-hover)}.ntl-switch input:checked+i::after{inset-inline-start:19px}
+.ntl-chips{display:flex;flex-wrap:wrap;gap:.4rem;max-height:150px;overflow:auto}
+.ntl-chip{cursor:pointer}.ntl-chip input{display:none}
+.ntl-chip span{display:inline-block;padding:.3rem .7rem;border-radius:99px;font-size:.7rem;font-weight:700;border:1px solid var(--line);background:rgba(255,255,255,.06)}
+.ntl-chip input:checked+span{background:var(--theme-accent);border-color:rgba(255,255,255,.4)}
+.ntl-bar{display:flex;align-items:center;gap:.6rem;font-size:.72rem;margin:.45rem 0}.ntl-bar>div{flex:1;height:8px;border-radius:9px;background:rgba(255,255,255,.1);overflow:hidden}
+.ntl-bar i{display:block;height:100%;background:linear-gradient(90deg,var(--a),var(--a2));border-radius:9px}.ntl-bar em{width:28px;text-align:left;font-style:normal;opacity:.7}
+.ntl-empty{display:flex;flex-direction:column;align-items:center;gap:.5rem;padding:2rem;color:rgba(255,255,255,.4);font-size:.8rem}
+.ntl-skeleton{height:84px;border-radius:20px;margin-bottom:.8rem;background:linear-gradient(90deg,rgba(255,255,255,.05),rgba(255,255,255,.13),rgba(255,255,255,.05));background-size:200% 100%;animation:ntl-sk 1.2s infinite}.ntl-skeleton.short{height:50px}
+@keyframes ntl-sk{to{background-position:-200% 0}}

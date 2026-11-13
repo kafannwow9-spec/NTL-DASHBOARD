@@ -8,8 +8,8 @@
   <meta property="og:title" content="NTL Dashboard">
   <meta property="og:description" content="لوحة التحكم الرسمية لبوت NTL لإدارة السيرفرات، الإيمبدات، التذاكر، وأنظمة الحماية والتخطي.">
   <meta property="og:site_name" content="NTL Dashboard">
-  <meta property="og:image" content="/assets/bot_avatar.png">
-  <link rel="icon" type="image/png" href="/assets/bot_avatar.png">
+  <meta property="og:image" content="/assets/ntl-logo.png">
+  <link rel="icon" type="image/png" href="/assets/ntl-logo.png">
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -271,14 +271,14 @@
       
       <!-- BOT HEADER BANNER -->
       <div class="relative h-44 bg-[#1e1e20] overflow-hidden flex flex-col justify-between p-4 border-b border-white/10">
-        <div class="absolute inset-0 bg-cover bg-center opacity-30 blur-md transform scale-110" style="background-image: url('/assets/bot_avatar.jpg');"></div>
+        <div class="absolute inset-0 bg-cover bg-center opacity-30 blur-md transform scale-110" style="background-image: url('/assets/ntl-logo.png');"></div>
         <div class="absolute inset-0 bg-gradient-to-t from-[#161618] via-[#161618]/60 to-transparent"></div>
         
         <!-- Top Bot Logo Image -->
         <div class="relative z-10 flex items-center justify-between">
           <div class="flex items-center gap-3">
             <div class="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 p-0.5 shadow-xl overflow-hidden backdrop-blur-md">
-              <img src="/assets/bot_avatar.jpg" onerror="this.onerror=null; this.src='https://cdn.discordapp.com/embed/avatars/0.png'" alt="NTL Bot" class="w-full h-full rounded-xl object-cover">
+              <img src="/assets/ntl-logo.png" onerror="this.onerror=null; this.src='https://cdn.discordapp.com/embed/avatars/0.png'" alt="NTL Bot" class="w-full h-full rounded-xl object-cover">
             </div>
             <div class="flex flex-col">
               <span class="font-black text-sm text-white">NTL Bot</span>
@@ -376,7 +376,7 @@
         <!-- Bot Avatar Centered Frame -->
         <div class="relative z-10 mb-6 group">
           <div class="relative w-28 h-28 sm:w-32 sm:h-32 rounded-2xl bg-[rgba(255,255,255,0.02)] border border-[#1a1a1a] p-2 flex items-center justify-center overflow-hidden">
-            <img src="/assets/bot_avatar.jpg" onerror="this.onerror=null; this.src='https://cdn.discordapp.com/embed/avatars/0.png'" alt="NTL Bot Avatar" class="w-full h-full rounded-xl object-cover">
+            <img src="/assets/ntl-logo.png" onerror="this.onerror=null; this.src='https://cdn.discordapp.com/embed/avatars/0.png'" alt="NTL Bot Avatar" class="w-full h-full rounded-xl object-cover">
           </div>
           <!-- Online Status Badge -->
           <div class="absolute -bottom-1 -right-1 px-3 py-1 rounded-full bg-[rgba(255,255,255,0.03)] border border-[#1a1a1a] flex items-center gap-1.5 shadow-md">
@@ -568,15 +568,14 @@
               <i data-lucide="key" class="w-6 h-6 text-zinc-300"></i>
             </div>
             <div class="flex flex-col gap-1">
-              <h3 class="text-base font-bold text-white">تخطي مفاتيح Delta والأذكار</h3>
+              <h3 class="text-base font-bold text-white">تخطي مفاتيح Delta</h3>
               <p class="text-xs text-zinc-400 leading-relaxed">
-                أداة تخطي مفاتيح Delta السريعة للأعضاء، بالإضافة إلى نظام الأذكار الدورية لإرسال الأدعية تلقائياً بالسيرفر.
+                أداة تخطي مفاتيح Delta السريعة للأعضاء.
               </p>
             </div>
             <div class="flex items-center gap-2 pt-2 border-t border-[#1a1a1a] text-[11px] text-zinc-400 font-medium">
               <span>اختصار مفاتيح</span>
               <span>•</span>
-              <span>أذكار مكررة</span>
               <span>•</span>
               <span>استجابة فورية</span>
             </div>
@@ -614,7 +613,7 @@
             <div class="text-sm font-bold text-white" id="user-profile-name">المستخدم</div>
             <div class="text-xs text-slate-400">مرحباً بك مجدداً</div>
           </div>
-          <img id="user-profile-img" src="/assets/bot_avatar.jpg" onerror="this.onerror=null; this.src='https://cdn.discordapp.com/embed/avatars/0.png'" class="w-12 h-12 rounded-full border-2 border-indigo-500/30 object-cover shadow-lg shadow-indigo-500/10" alt="User Profile">
+          <img id="user-profile-img" src="/assets/ntl-logo.png" onerror="this.onerror=null; this.src='https://cdn.discordapp.com/embed/avatars/0.png'" class="w-12 h-12 rounded-full border-2 border-indigo-500/30 object-cover shadow-lg shadow-indigo-500/10" alt="User Profile">
         </div>
       </div>
 
@@ -731,22 +730,7 @@
           </button>
         </div>
 
-        <!-- Azkar Auto Poster Feature Card -->
-        <div class="dashboard-card p-5 flex flex-col justify-between gap-4 border-l-4 border-l-emerald-500">
-          <div class="flex items-start gap-3 text-right">
-            <div class="w-11 h-11 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0">
-              <i data-lucide="book-open" class="w-6 h-6"></i>
-            </div>
-            <div class="flex flex-col">
-              <h4 class="font-bold text-base text-white">تسطيب الأذكار</h4>
-              <p class="text-xs text-slate-400 leading-relaxed mt-1">نشر الأذكار والآيات القرآنية بشكل دوري بداخل روم مخصص تلقائياً.</p>
-            </div>
-          </div>
-          <button onclick="switchServerTab('azkar')" class="w-full py-2.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600 text-emerald-200 hover:text-white text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5">
-            <span>استكشف</span>
-            <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
-          </button>
-        </div>
+        
 
         <!-- Suggestions Feature Card -->
         <div class="dashboard-card p-5 flex flex-col justify-between gap-4 border-l-4 border-l-cyan-500">
@@ -885,10 +869,6 @@
         <button onclick="switchServerTab('keys')" id="tab-btn-keys" class="server-tab-btn px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 shrink-0 flex items-center gap-2 transition cursor-pointer">
           <i data-lucide="key" class="w-4 h-4 text-yellow-400"></i>
           <span>تخطي المفاتيح</span>
-        </button>
-        <button onclick="switchServerTab('azkar')" id="tab-btn-azkar" class="server-tab-btn px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 shrink-0 flex items-center gap-2 transition cursor-pointer">
-          <i data-lucide="book-open" class="w-4 h-4 text-emerald-400"></i>
-          <span>الأذكار والقرآن</span>
         </button>
         <button onclick="switchServerTab('suggestions')" id="tab-btn-suggestions" class="server-tab-btn px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 shrink-0 flex items-center gap-2 transition cursor-pointer">
           <i data-lucide="lightbulb" class="w-4 h-4 text-cyan-400"></i>
@@ -1268,55 +1248,8 @@
           </button>
         </div>
 
-        <!-- Module Editor: Azkar -->
-        <div id="mod-azkar" class="module-tab hidden space-y-6 text-right">
-          <div class="flex justify-between items-center border-b border-white/10 pb-4">
-            <div>
-              <h3 class="font-extrabold text-lg text-white flex items-center gap-2">
-                <i data-lucide="book-open" class="w-5 h-5 text-emerald-400"></i>
-                <span>إعدادات وتسطيب نظام الأذكار</span>
-              </h3>
-              <p class="text-xs text-slate-400">تشغيل/إطفاء واختيار الروم وفترة التكرار لإرسال الأذكار التلقائية</p>
-            </div>
-            <div class="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-xl border border-white/10">
-              <span class="text-xs font-bold text-slate-300">حالة النظام:</span>
-              <label class="relative inline-flex items-center cursor-pointer">
-                <input id="azk-enabled" type="checkbox" checked class="sr-only peer">
-                <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
-              </label>
-            </div>
-          </div>
-
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label class="block text-xs font-bold text-slate-300 mb-1.5">روم الأذكار والآيات:</label>
-              <select id="azk-channelId" class="w-full bg-[rgba(0,0,0,0.2)] border border-white/10 rounded-xl p-3 text-sm text-slate-200 dir-rtl">
-                <option value="azkar"># أذكار-وآيات</option>
-              </select>
-            </div>
-            <div>
-              <label class="block text-xs font-bold text-slate-300 mb-1.5">الفترة الزمنية للإرسال الدوري:</label>
-              <select id="azk-interval" class="w-full bg-[rgba(0,0,0,0.2)] border border-white/10 rounded-xl p-3 text-sm text-slate-200">
-                <option value="15">كل 15 دقيقة</option>
-                <option value="30" selected>كل 30 دقيقة</option>
-                <option value="60">كل ساعة</option>
-                <option value="120">كل ساعتين</option>
-                <option value="240">كل 4 ساعات</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="flex flex-col sm:flex-row gap-3 pt-2">
-            <button onclick="saveAllGuildSettings('azkar')" class="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-emerald-600/20 transition cursor-pointer flex items-center justify-center gap-2">
-              <i data-lucide="check-circle" class="w-4 h-4"></i>
-              <span>تسطيب ونشر الأذكار التلقائية</span>
-            </button>
-            <button onclick="triggerInstantAzkar()" class="w-full py-3.5 bg-[rgba(255,255,255,0.02)] hover:bg-[#21262d] text-zinc-300 border border-[#1a1a1a] font-extrabold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-2">
-              <i data-lucide="sparkles" class="w-4 h-4 text-zinc-400"></i>
-              <span>إرسال ذكر فوري الآن بالروم</span>
-            </button>
-          </div>
-        </div>
+        
+        
 
         <!-- Module Editor: Suggestions -->
         <div id="mod-suggestions" class="module-tab hidden space-y-6 text-right">
@@ -2058,17 +1991,10 @@
     }
 
     function getApiSecret() {
-      return localStorage.getItem('ntl_api_secret') || '38dj38nr89oq';
+      return localStorage.getItem('ntl_api_secret') || '';
     }
 
-    function getSignedSessionHeader() {
-      try {
-        const signed = sessionStorage.getItem('ntl_signed_session') || localStorage.getItem('ntl_signed_session') || '';
-        return signed ? { 'X-NTL-Session': signed } : {};
-      } catch (e) {
-        return {};
-      }
-    }
+    function getSignedSessionHeader() { return {}; }
 
     function getApiHeaders(extraHeaders = {}) {
       const secret = getApiSecret();
@@ -2123,7 +2049,6 @@
             autoRole: newSettings?.autoRole || '',
             panels: newSettings?.panels,
             suggestions: newSettings?.suggestions,
-            azkar: newSettings?.azkar,
             protection: newSettings?.protection,
             musicEnabled: newSettings?.musicEnabled,
             deltaKeys: newSettings?.deltaKeys
@@ -3095,73 +3020,12 @@
     }
 
     async function uploadDirectToCdn(dataUrl) {
-      // 1. Try server endpoint first
       try {
-        const res = await apiFetch('/api/upload-image', {
-          method: 'POST',
-          body: JSON.stringify({ image: dataUrl })
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data && data.success && data.url) {
-            let finalUrl = data.url;
-            if (finalUrl.startsWith('/') && !finalUrl.includes('pages.dev')) {
-              finalUrl = window.location.origin + finalUrl;
-            }
-            if (!finalUrl.includes('pages.dev/image-')) {
-              return finalUrl;
-            }
-          }
-        }
-      } catch (err) {
-        console.warn('Backend image upload fallback:', err);
-      }
-
-      // 2. Direct client-side ImgBB upload fallback
-      try {
-        const base64Data = dataUrl.split(',')[1];
-        if (base64Data) {
-          const keys = ['2d8bbf7cf499f57912d0938fc9d01242', 'd20cfbe5ca2501a350ebfb9fa9d1d575', '6d207e02198a847aa5ad3ac50ed46520'];
-          for (const key of keys) {
-            try {
-              const formData = new FormData();
-              formData.append('image', base64Data);
-              const imgbbRes = await fetch(`https://api.imgbb.com/1/upload?key=${key}`, {
-                method: 'POST',
-                body: formData
-              });
-              if (imgbbRes.ok) {
-                const imgbbData = await imgbbRes.json();
-                if (imgbbData?.data?.url) {
-                  return imgbbData.data.url;
-                }
-              }
-            } catch (kErr) {}
-          }
-        }
-      } catch (err) {}
-
-      // 3. Direct client-side Freeimage.host upload fallback
-      try {
-        const base64Data = dataUrl.split(',')[1];
-        if (base64Data) {
-          const formData = new FormData();
-          formData.append('source', base64Data);
-          formData.append('action', 'upload');
-          formData.append('auth_token', '6d207e02198a847aa5ad3ac50ed46520');
-          const fRes = await fetch('https://freeimage.host/api/1/upload', {
-            method: 'POST',
-            body: formData
-          });
-          if (fRes.ok) {
-            const fData = await fRes.json();
-            if (fData?.image?.url) {
-              return fData.image.url;
-            }
-          }
-        }
-      } catch (err) {}
-
+        const res = await apiFetch('/api/upload-image', { method: 'POST', body: JSON.stringify({ image: dataUrl }) });
+        const data = res.ok ? await res.json() : null;
+        if (data && data.success && data.url) return data.url;
+        showToast((data && data.error) || 'تعذر رفع الصورة', 'error');
+      } catch (err) { showToast('تعذر رفع الصورة', 'error'); }
       return dataUrl;
     }
 
@@ -3278,11 +3142,6 @@
           rolePunishment: document.getElementById('prot-roles-punish')?.value || 'strip',
           logChannel: document.getElementById('prot-logChannel')?.value || ''
         },
-        azkar: {
-          enabled: document.getElementById('azk-enabled')?.checked !== false,
-          channelId: document.getElementById('azk-channelId')?.value,
-          interval: document.getElementById('azk-interval')?.value || '30',
-        },
         suggestions: {
           enabled: document.getElementById('sug-enabled')?.checked !== false,
           channelId: document.getElementById('sug-channelId')?.value,
@@ -3335,7 +3194,7 @@
             guildRolesCache = data.roles || [];
             
             const channelOptionsHtml = `<option value="">-- اختر القناة --</option>` + guildChannelsCache.map(c => `<option value="${c.id}"># ${escapeHtml(c.name)}</option>`).join('');
-            ['ticket-channelId', 'script-channelId', 'key-channelId', 'azk-channelId', 'sug-channelId', 'direct-channelId', 'prot-logChannel', 'emb-channelId'].forEach(id => {
+            ['ticket-channelId', 'script-channelId', 'key-channelId', 'sug-channelId', 'direct-channelId', 'prot-logChannel', 'emb-channelId'].forEach(id => {
               const el = document.getElementById(id);
               if (el) el.innerHTML = channelOptionsHtml;
             });
@@ -3406,33 +3265,7 @@
       }
     }
 
-    async function triggerInstantAzkar() {
-      if (!selectedGuild || !selectedGuild.id) {
-        showToast('يرجى اختيار سيرفر أولاً', 'error');
-        return;
-      }
-
-      const channelId = document.getElementById('azk-channelId')?.value;
-
-      showToast('جاري إرسال الذكر الفوري إلى الروم...', 'info');
-
-      try {
-        const res = await apiFetch(`/api/azkar/trigger/${selectedGuild.id}`, {
-          method: 'POST',
-          body: JSON.stringify({ channelId })
-        });
-        const data = await res.json();
-        if (data.success) {
-          showToast(data.message, 'success');
-        } else {
-          showToast(data.error || 'تعذر إرسال الذكر', 'error');
-        }
-      } catch (err) {
-        showToast('تم إرسال الذكر بنجاح!', 'success');
-      }
-    }
-
-    async function publishSuggestionEmbed() {
+        async function publishSuggestionEmbed() {
       if (!selectedGuild || !selectedGuild.id) {
         showToast('يرجى اختيار سيرفر أولاً', 'error');
         return;
@@ -5244,7 +5077,6 @@
         protectionTitle: 'نظام الحماية الذاتي المتقدم',
         protectionDesc: 'حماية شاملة ضد التخريب ومسح الرومات والرتب مع تنبيهات سرية',
         suggestionsTitle: 'نظام الاقتراحات التفاعلي',
-        azkarTitle: 'نظام الأذكار والقرآن التلقائي',
         ticketsTitle: 'نظام التذاكر المتقدم',
         welcomeTitle: 'أستوديو بطاقة الترحيب (Welcome Card Studio)',
         apiGatewayTitle: 'بوابة الـ API ومفاتيح الوصول السرية (Secret Keys)',
@@ -5271,7 +5103,6 @@
         protectionTitle: 'Advanced Server Protection System',
         protectionDesc: 'Complete raid and anti-nuke protection with stealth alerts',
         suggestionsTitle: 'Interactive Suggestions System',
-        azkarTitle: 'Automated Azkar & Quran System',
         ticketsTitle: 'Advanced Ticket System',
         welcomeTitle: 'Welcome Card Studio',
         apiGatewayTitle: 'API Gateway & Secret Keys Management',
@@ -5298,7 +5129,6 @@
         protectionTitle: 'Sistema Avanzado de Protección del Servidor',
         protectionDesc: 'Protección completa contra raideo y eliminación no autorizada',
         suggestionsTitle: 'Sistema Interactivo de Sugerencias',
-        azkarTitle: 'Sistema Automatizado de Azkar y Corán',
         ticketsTitle: 'Sistema Avanzado de Tickets',
         welcomeTitle: 'Estudio de Tarjetas de Bienvenida',
         apiGatewayTitle: 'Pasarela API y Gestión de Claves Secretas',
@@ -5383,8 +5213,6 @@
     window.addEventListener('message', (event) => {
       if (event.data && event.data.type === 'OAUTH_AUTH_SUCCESS') {
         if (event.data.sessionToken) {
-          try { sessionStorage.setItem('ntl_signed_session', event.data.sessionToken); } catch (e) {}
-          try { localStorage.setItem('ntl_signed_session', event.data.sessionToken); } catch (e) {}
         }
         checkUserSession();
       }
